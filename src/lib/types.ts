@@ -64,21 +64,21 @@ export interface Transaction {
   transaction_type: TransactionType;
   asset_code: CurrencyCode;
   amount_asset: number;
-  amount_usd_equivalent: number;
+  amount_usd_equivalent: number; // For ADJUSTMENT, this will be the same as amount_asset if currency is USD.
   status: TransactionStatus;
   external_transaction_id?: string | null;
   deposit_address?: string | null;
   withdrawal_address?: string | null;
   network_fee_asset?: number | null;
   processing_fee_asset?: number | null;
-  notes?: string | null;
+  notes?: string | null; // Admin notes or system notes
   user_remarks?: string | null;
-  admin_processed_by?: string | null; // UUID
+  admin_processed_by?: string | null; // UUID of admin or system identifier
   created_at: string; // TIMESTAMPTZ
   updated_at: string; // TIMESTAMPTZ
   processed_at?: string | null; // TIMESTAMPTZ
   expires_at?: string | null; // TIMESTAMPTZ
-  user_email?: string; // For display purposes
+  user_email?: string; // For display purposes and notifications
   username?: string; // For display purposes
 }
 

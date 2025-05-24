@@ -1,7 +1,10 @@
+
 'use server';
 
 import type { User, KycStatus } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
+import { sendEmail } from '@/services/emailService';
+import { mockTradingPlans } from '@/lib/mock-data';
 
 // Mock database update
 let mockUsersDB = (await import('@/lib/mock-data')).mockUsers;
@@ -13,8 +16,19 @@ export async function updateUserKycStatus(userId: string, kycStatus: KycStatus, 
   if (userIndex === -1) {
     return { success: false, message: 'User not found.' };
   }
-  mockUsersDB[userIndex].kyc_status = kycStatus;
-  mockUsersDB[userIndex].updated_at = new Date().toISOString();
+  
+  const user = mockUsersDB[userIndex];
+  const oldKycStatus = user.kyc_status;
+  user.kyc_status = kycStatus;
+  user.updated_at = new Date().toISOString();
+
+  if (oldKycStatus !== kycStatus && user.email) {
+    await sendEmail({
+      to: user.email,
+      subject: 'Your KYC Status Has Been Updated',
+      body: `Dear ${user.username || 'User'},\n\nYour KYC status has been updated to: ${kycStatus.replace('_', ' ')}.\n\n${adminNotes ? `Admin Notes: ${adminNotes}\n\n` : ''}If you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
+    });
+  }
 
   revalidatePath('/users');
   revalidatePath(`/users/${userId}`);
@@ -28,15 +42,27 @@ export async function updateUserTradingPlan(userId: string, tradingPlanId: numbe
   if (userIndex === -1) {
     return { success: false, message: 'User not found.' };
   }
-  // Ensure trading plan exists (in a real app, check against trading_plans table)
-  const tradingPlans = (await import('@/lib/mock-data')).mockTradingPlans;
-  if (!tradingPlans.find(tp => tp.id === tradingPlanId)) {
+  
+  const tradingPlans = mockTradingPlans; // Using imported mockTradingPlans
+  const newPlan = tradingPlans.find(tp => tp.id === tradingPlanId);
+  if (!newPlan) {
       return { success: false, message: 'Trading plan not found.' };
   }
 
-  mockUsersDB[userIndex].trading_plan_id = tradingPlanId;
-  mockUsersDB[userIndex].updated_at = new Date().toISOString();
+  const user = mockUsersDB[userIndex];
+  const oldPlanId = user.trading_plan_id;
+  user.trading_plan_id = tradingPlanId;
+  user.updated_at = new Date().toISOString();
   
+  if (oldPlanId !== tradingPlanId && user.email) {
+    const oldPlan = tradingPlans.find(tp => tp.id === oldPlanId);
+    await sendEmail({
+      to: user.email,
+      subject: 'Your Trading Plan Has Been Updated',
+      body: `Dear ${user.username || 'User'},\n\nYour trading plan has been updated by an administrator.\n\nOld Plan: ${oldPlan?.name || 'N/A'}\nNew Plan: ${newPlan.name}\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
+    });
+  }
+
   revalidatePath('/users');
   revalidatePath(`/users/${userId}`);
   return { success: true, message: `User trading plan updated to ID ${tradingPlanId}.` };
@@ -49,8 +75,19 @@ export async function toggleUserActiveStatus(userId: string, isActive: boolean):
   if (userIndex === -1) {
     return { success: false, message: 'User not found.' };
   }
-  mockUsersDB[userIndex].is_active = isActive;
-  mockUsersDB[userIndex].updated_at = new Date().toISOString();
+  
+  const user = mockUsersDB[userIndex];
+  const oldIsActive = user.is_active;
+  user.is_active = isActive;
+  user.updated_at = new Date().toISOString();
+
+  if (oldIsActive !== isActive && user.email) {
+    await sendEmail({
+      to: user.email,
+      subject: `Your Account Status Has Been Updated`,
+      body: `Dear ${user.username || 'User'},\n\nYour account has been ${isActive ? 'activated' : 'deactivated'} by an administrator.\n\nIf you believe this is an error or have any questions, please contact support immediately.\n\nThank you,\nFPX Markets Team`,
+    });
+  }
 
   revalidatePath('/users');
   revalidatePath(`/users/${userId}`);
@@ -58,7 +95,6 @@ export async function toggleUserActiveStatus(userId: string, isActive: boolean):
 }
 
 export async function findUserById(userId: string): Promise<User | null> {
-  // In a real app, this would query the database
   const user = mockUsersDB.find(u => u.id === userId);
   return user || null;
 }
