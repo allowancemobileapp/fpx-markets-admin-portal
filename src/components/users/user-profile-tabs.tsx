@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { User, Wallet, CurrencyCode, BalanceAdjustmentFormData, AdjustBalanceServerActionData, PandLAdjustmentFormData, AdjustPandLServerActionData } from '@/lib/types';
+import type { User, Wallet, CurrencyCode, AdjustBalanceServerActionData, AdjustPandLServerActionData } from '@/lib/types';
 import { mockTradingPlans } from '@/lib/mock-data';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,25 +24,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 
-// Schema for main balance adjustment (external asset)
-const BalanceAdjustmentFormSchema = z.object({
+// Schema for main balance adjustment (external asset conversion)
+const AdjustBalanceFormSchema = z.object({
   originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), {
     message: "Please select the asset of the external transaction.",
   }),
   originalAssetAmount: z.coerce.number().positive("Amount must be a positive number."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long (e.g., transaction ID, reason)."),
 });
+type AdjustBalanceFormData = z.infer<typeof AdjustBalanceFormSchema>;
+
 
 // Schema for P&L balance adjustment
-const PandLAdjustmentFormSchema = z.object({
+const AdjustPandLFormSchema = z.object({
   adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), // Allow positive or negative, but not zero
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long (e.g., reason for P&L change)."),
 });
+type AdjustPandLFormData = z.infer<typeof AdjustPandLFormSchema>;
 
 
 interface UserProfileTabsProps {
@@ -59,6 +62,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
   
   const [user, setUser] = useState<User>(initialUser);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
+  const [formattedWalletUpdatedAt, setFormattedWalletUpdatedAt] = useState<string | null>(null);
 
   const [selectedTradingPlanId, setSelectedTradingPlanId] = useState<number>(user.trading_plan_id);
   
@@ -68,15 +72,14 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState('');
   
-  // Type to distinguish which action to perform after PIN
   type PendingActionType = 'mainBalance' | 'pandlBalance';
   const [pendingActionType, setPendingActionType] = useState<PendingActionType | null>(null);
   const [mainBalanceDataToSubmit, setMainBalanceDataToSubmit] = useState<AdjustBalanceServerActionData | null>(null);
   const [pandlDataToSubmit, setPandlDataToSubmit] = useState<AdjustPandLServerActionData | null>(null);
 
 
-  const mainBalanceForm = useForm<BalanceAdjustmentFormData>({
-    resolver: zodResolver(BalanceAdjustmentFormSchema),
+  const mainBalanceForm = useForm<AdjustBalanceFormData>({
+    resolver: zodResolver(AdjustBalanceFormSchema),
     defaultValues: {
       originalAssetCode: 'USD',
       originalAssetAmount: 0,
@@ -84,8 +87,8 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
     },
   });
 
-  const pandlForm = useForm<PandLAdjustmentFormData>({
-    resolver: zodResolver(PandLAdjustmentFormSchema),
+  const pandlForm = useForm<AdjustPandLFormData>({
+    resolver: zodResolver(AdjustPandLFormSchema),
     defaultValues: {
       adjustmentAmount: 0,
       adminNotes: '',
@@ -97,6 +100,12 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
     setWallet(initialWallet);
     setSelectedTradingPlanId(initialUser.trading_plan_id);
   }, [initialUser, initialWallet]);
+
+  useEffect(() => {
+    if (wallet?.updated_at) {
+      setFormattedWalletUpdatedAt(new Date(wallet.updated_at).toLocaleString());
+    }
+  }, [wallet?.updated_at]);
 
 
   const handleTradingPlanUpdate = () => {
@@ -133,19 +142,19 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
     setIsAdjustPandLDialogOpen(true);
   };
 
-  const onMainBalanceFormSubmit = (data: BalanceAdjustmentFormData) => {
+  const onMainBalanceFormSubmit = (data: AdjustBalanceFormData) => {
     setMainBalanceDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('mainBalance');
-    setIsAdjustBalanceDialogOpen(false);
+    setIsAdjustBalanceDialogOpen(false); // Close main balance dialog
     setIsPinDialogOpen(true);
     setEnteredPin('');
     setPinError('');
   };
 
-  const onPandLFormSubmit = (data: PandLAdjustmentFormData) => {
+  const onPandLFormSubmit = (data: AdjustPandLFormData) => {
     setPandlDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('pandlBalance');
-    setIsAdjustPandLDialogOpen(false);
+    setIsAdjustPandLDialogOpen(false); // Close P&L dialog
     setIsPinDialogOpen(true);
     setEnteredPin('');
     setPinError('');
@@ -198,7 +207,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
 
   return (
     <>
-      <Tabs defaultValue="wallet" className="w-full"> {/* Default to wallet tab */}
+      <Tabs defaultValue="wallet" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="wallet">Wallet</TabsTrigger>
@@ -258,7 +267,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
               </CardContent>
             </Card>
              <p className="text-xs text-muted-foreground pt-2 text-center">
-                Wallet Last Updated: {new Date(wallet.updated_at).toLocaleString()}
+                Wallet Last Updated: {formattedWalletUpdatedAt || 'Loading...'}
             </p>
           </div>
         </TabsContent>
@@ -313,14 +322,14 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
         </TabsContent>
       </Tabs>
 
-      {/* Adjust Main Balance Dialog */}
+      {/* Adjust Main Account Balance Dialog */}
       <AlertDialog open={isAdjustBalanceDialogOpen} onOpenChange={setIsAdjustBalanceDialogOpen}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Adjust User Main Account Balance</AlertDialogTitle>
             <AlertDialogDescription>
               Current Main Balance: <span className="font-semibold">{wallet.balance.toFixed(2)} {wallet.currency}</span>.
-              Enter details of the user's external deposit. The balance will be converted to {wallet.currency} and added.
+              Enter details of the user's external deposit/withdrawal. The system will convert to {wallet.currency} and update the balance.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Form {...mainBalanceForm}>
@@ -334,7 +343,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select asset (e.g., BTC, ETH)" />
+                          <SelectValue placeholder="Select asset (e.g., BTC, ETH, USD)" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -352,11 +361,11 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                 name="originalAssetAmount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Amount of External Asset Deposited</FormLabel>
+                    <FormLabel>Amount of External Asset Transacted</FormLabel>
                     <FormControl>
                       <Input type="number" step="any" placeholder="e.g., 0.5 or 1000" {...field} />
                     </FormControl>
-                     <FormDescription>Enter the amount of the asset the user deposited (e.g., 0.5 for BTC).</FormDescription>
+                     <FormDescription>Enter the amount of the asset (e.g., 0.5 for BTC, 1000 for USD).</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -375,7 +384,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                 )}
               />
               <AlertDialogFooter className="pt-4">
-                <AlertDialogCancel onClick={() => setIsAdjustBalanceDialogOpen(false)}>Cancel</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => { setIsAdjustBalanceDialogOpen(false); mainBalanceForm.reset(); }}>Cancel</AlertDialogCancel>
                 <Button type="submit" disabled={isProcessing}>
                   {isProcessing ? 'Processing...' : 'Proceed to PIN'}
                 </Button>
@@ -392,7 +401,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
             <AlertDialogTitle>Adjust User P&L Balance</AlertDialogTitle>
             <AlertDialogDescription>
               Current P&L Balance: <span className="font-semibold">{wallet.profit_loss_balance.toFixed(2)} {wallet.currency}</span>.
-              Enter the amount to adjust the P&L balance by (in {wallet.currency}). Use positive for credits, negative for debits.
+              Enter the amount to adjust the P&L balance by (in {wallet.currency}).
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Form {...pandlForm}>
@@ -404,7 +413,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                   <FormItem>
                     <FormLabel>Adjustment Amount ({wallet.currency})</FormLabel>
                     <FormControl>
-                      <Input type="number" step="any" placeholder="e.g., 100 or -50" {...field} />
+                      <Input type="number" step="any" placeholder="e.g., +100 or -50" {...field} />
                     </FormControl>
                      <FormDescription>Enter positive for profit credits, negative for loss debits.</FormDescription>
                     <FormMessage />
@@ -425,7 +434,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                 )}
               />
               <AlertDialogFooter className="pt-4">
-                <AlertDialogCancel onClick={() => setIsAdjustPandLDialogOpen(false)}>Cancel</AlertDialogCancel>
+                <AlertDialogCancel onClick={() => { setIsAdjustPandLDialogOpen(false); pandlForm.reset(); }}>Cancel</AlertDialogCancel>
                 <Button type="submit" disabled={isProcessing}>
                   {isProcessing ? 'Processing...' : 'Proceed to PIN'}
                 </Button>
@@ -448,15 +457,20 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
           <div className="space-y-3 py-2">
             <Input
               type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
               maxLength={4}
               placeholder="Enter 4-digit PIN"
               value={enteredPin}
               onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, '');
-                setEnteredPin(val);
+                const val = e.target.value.replace(/\D/g, ''); // Allow only digits
+                if (val.length <= 4) {
+                  setEnteredPin(val);
+                }
                 if (pinError) setPinError('');
               }}
               className="text-center text-lg tracking-[0.5em]"
+              autoFocus
             />
             {pinError && <p className="text-sm text-destructive text-center">{pinError}</p>}
           </div>
@@ -471,3 +485,4 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
     </>
   );
 }
+
