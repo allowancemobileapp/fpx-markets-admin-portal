@@ -19,7 +19,9 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { format } from 'date-fns';
+// import { format } from 'date-fns'; // No longer directly used here for created_at
+import { FormattedDateCell } from '@/components/shared/formatted-date-cell';
+
 
 import Link from 'next/link';
 
@@ -128,7 +130,7 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
             <TableBody>
               {filteredTransactions.length > 0 ? filteredTransactions.map((tx) => (
                 <TableRow key={tx.id} className="hover:bg-muted/50">
-                  <TableCell>{format(new Date(tx.created_at), 'PPpp')}</TableCell>
+                  <TableCell><FormattedDateCell dateString={tx.created_at} /></TableCell>
                   <TableCell>
                     <Link href={`/users/${tx.user_id}`} className="font-medium text-primary hover:underline">
                       {tx.username || tx.user_email || tx.user_id.substring(0,8)}
