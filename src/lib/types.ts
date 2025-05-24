@@ -7,7 +7,7 @@ export type CopyStatus = 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'PENDING_ACTIVATION';
 export type TradeDirection = 'BUY' | 'SELL';
 export type TradeOrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
 export type TradeStatus = 'OPEN' | 'CLOSED' | 'CANCELLED' | 'PENDING_OPEN';
-export type KycStatus = 'NOT_SUBMITTED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
+// KYCStatus removed
 
 
 export interface TradingPlan {
@@ -36,7 +36,7 @@ export interface User {
   trading_pin_hash?: string | null;
   profile_completed_at?: string | null; // TIMESTAMPTZ
   pin_setup_completed_at?: string | null; // TIMESTAMPTZ
-  kyc_status: KycStatus;
+  // kyc_status: KycStatus; // Removed
   is_active: boolean;
   is_email_verified: boolean;
   created_at: string; // TIMESTAMPTZ

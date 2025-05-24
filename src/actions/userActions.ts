@@ -1,7 +1,7 @@
 
 'use server';
 
-import type { User, KycStatus } from '@/lib/types';
+import type { User } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { sendEmail } from '@/services/emailService';
 import { mockTradingPlans } from '@/lib/mock-data';
@@ -9,31 +9,7 @@ import { mockTradingPlans } from '@/lib/mock-data';
 // Mock database update
 let mockUsersDB = (await import('@/lib/mock-data')).mockUsers;
 
-export async function updateUserKycStatus(userId: string, kycStatus: KycStatus, adminNotes?: string): Promise<{ success: boolean; message: string }> {
-  console.log(`Admin action: Updating KYC status for user ${userId} to ${kycStatus}. Notes: ${adminNotes || 'N/A'}`);
-  
-  const userIndex = mockUsersDB.findIndex(u => u.id === userId);
-  if (userIndex === -1) {
-    return { success: false, message: 'User not found.' };
-  }
-  
-  const user = mockUsersDB[userIndex];
-  const oldKycStatus = user.kyc_status;
-  user.kyc_status = kycStatus;
-  user.updated_at = new Date().toISOString();
-
-  if (oldKycStatus !== kycStatus && user.email) {
-    await sendEmail({
-      to: user.email,
-      subject: 'Your KYC Status Has Been Updated',
-      body: `Dear ${user.username || 'User'},\n\nYour KYC status has been updated to: ${kycStatus.replace('_', ' ')}.\n\n${adminNotes ? `Admin Notes: ${adminNotes}\n\n` : ''}If you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
-    });
-  }
-
-  revalidatePath('/users');
-  revalidatePath(`/users/${userId}`);
-  return { success: true, message: `User KYC status updated to ${kycStatus}.` };
-}
+// updateUserKycStatus function removed as KYC is no longer managed by admin.
 
 export async function updateUserTradingPlan(userId: string, tradingPlanId: number): Promise<{ success: boolean; message: string }> {
   console.log(`Admin action: Updating trading plan for user ${userId} to plan ID ${tradingPlanId}.`);

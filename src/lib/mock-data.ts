@@ -1,4 +1,4 @@
-import type { User, Transaction, Instrument, TradingPlan, Wallet, KycStatus, TransactionStatus, CurrencyCode, TransactionType } from './types';
+import type { User, Transaction, Instrument, TradingPlan, Wallet, TransactionStatus, CurrencyCode, TransactionType } from './types';
 
 export const mockTradingPlans: TradingPlan[] = [
   { id: 1, name: 'Beginner', minimum_deposit_usd: 500, description: 'Ideal for new traders.', allow_copy_trading: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), commission_details: {"forex_pip_spread": 1.5, "crypto_percent": 0.1}, leverage_info: {"max_leverage": "1:30"} },
@@ -15,7 +15,7 @@ export const mockUsers: User[] = [
     first_name: 'John',
     last_name: 'Doe',
     trading_plan_id: 1,
-    kyc_status: 'VERIFIED' as KycStatus,
+    // kyc_status: 'VERIFIED', // Removed
     is_active: true,
     is_email_verified: true,
     created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
@@ -31,7 +31,7 @@ export const mockUsers: User[] = [
     first_name: 'Jane',
     last_name: 'Smith',
     trading_plan_id: 2,
-    kyc_status: 'PENDING_REVIEW' as KycStatus,
+    // kyc_status: 'PENDING_REVIEW', // Removed
     is_active: true,
     is_email_verified: true,
     created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
@@ -41,12 +41,12 @@ export const mockUsers: User[] = [
   {
     id: 'c3d4e5f6-a7b8-9012-3456-789012cdef01',
     firebase_auth_uid: 'firebaseUser3',
-    username: 'alice. Wonderland',
+    username: 'alice.wonderland',
     email: 'alice.wonderland@example.com',
     first_name: 'Alice',
     last_name: 'Wonderland',
     trading_plan_id: 3,
-    kyc_status: 'NOT_SUBMITTED' as KycStatus,
+    // kyc_status: 'NOT_SUBMITTED', // Removed
     is_active: false,
     is_email_verified: false,
     created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),

@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { User, Wallet, Transaction, KycStatus } from '@/lib/types';
+import type { User, Wallet, Transaction } from '@/lib/types';
 import { mockTradingPlans } from '@/lib/mock-data';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,10 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { updateUserKycStatus, updateUserTradingPlan } from '@/actions/userActions';
-import { setWalletBalance } from '@/actions/walletActions'; // New action
+import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userActions';
+import { setWalletBalance } from '@/actions/walletActions';
 import { useState, useTransition, useEffect } from 'react';
-import { CheckCircle, XCircle, Edit3, DollarSign } from 'lucide-react';
+import { CheckCircle, XCircle, DollarSign, UserX, UserCheck } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 interface UserProfileTabsProps {
@@ -40,8 +39,6 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
   const [user, setUser] = useState<User>(initialUser);
   const [wallets, setWallets] = useState<Wallet[]>(initialWallets);
 
-  const [kycStatus, setKycStatus] = useState<KycStatus>(user.kyc_status);
-  const [kycNotes, setKycNotes] = useState('');
   const [selectedTradingPlanId, setSelectedTradingPlanId] = useState<number>(user.trading_plan_id);
 
   const [isAdjustBalanceDialogOpen, setIsAdjustBalanceDialogOpen] = useState(false);
@@ -49,33 +46,30 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
   const [newBalanceInput, setNewBalanceInput] = useState('');
   const [balanceAdjustmentNotes, setBalanceAdjustmentNotes] = useState('');
   
-  const kycStatuses: KycStatus[] = ['VERIFIED', 'PENDING_REVIEW', 'REJECTED', 'NOT_SUBMITTED'];
-
   useEffect(() => {
     setUser(initialUser);
     setWallets(initialWallets);
-    setKycStatus(initialUser.kyc_status);
     setSelectedTradingPlanId(initialUser.trading_plan_id);
   }, [initialUser, initialWallets]);
 
-  const handleKycUpdate = () => {
-    startTransition(async () => {
-      const result = await updateUserKycStatus(user.id, kycStatus, kycNotes);
-      if (result.success) {
-        setUser(prev => ({ ...prev, kyc_status: kycStatus, updated_at: new Date().toISOString() }));
-        toast({ title: "Success", description: result.message });
-        setKycNotes('');
-      } else {
-        toast({ title: "Error", description: result.message, variant: "destructive" });
-      }
-    });
-  };
 
   const handleTradingPlanUpdate = () => {
     startTransition(async () => {
       const result = await updateUserTradingPlan(user.id, selectedTradingPlanId);
       if (result.success) {
         setUser(prev => ({ ...prev, trading_plan_id: selectedTradingPlanId, updated_at: new Date().toISOString() }));
+        toast({ title: "Success", description: result.message });
+      } else {
+        toast({ title: "Error", description: result.message, variant: "destructive" });
+      }
+    });
+  };
+
+  const handleToggleActiveStatus = () => {
+    startTransition(async () => {
+      const result = await toggleUserActiveStatus(user.id, !user.is_active);
+      if (result.success) {
+        setUser(prev => ({ ...prev, is_active: !prev.is_active, updated_at: new Date().toISOString() }));
         toast({ title: "Success", description: result.message });
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -103,7 +97,6 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
         walletId: selectedWalletForAdjustment.id,
         newBalance: newBalance,
         adminNotes: balanceAdjustmentNotes || "Admin balance adjustment.",
-        // adminId will be set by default in action if not provided
       });
 
       if (result.success && result.wallet) {
@@ -123,11 +116,11 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
   return (
     <>
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mb-4"> {/* Adjusted grid-cols */}
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="wallets">Wallets</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          {/* <TabsTrigger value="settings">Settings</TabsTrigger> Settings tab can be removed or kept based on future needs */}
           <TabsTrigger value="actions">Admin Actions</TabsTrigger>
         </TabsList>
 
@@ -140,17 +133,13 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><strong>Firebase UID:</strong> <span className="text-sm text-muted-foreground">{user.firebase_auth_uid}</span></div>
-                <div><strong>KYC Status:</strong> <span className={`font-semibold ${
-                  user.kyc_status === 'VERIFIED' ? 'text-green-600' : 
-                  user.kyc_status === 'PENDING_REVIEW' ? 'text-yellow-600' :
-                  user.kyc_status === 'REJECTED' ? 'text-red-600' : 'text-gray-600'
-                }`}>{user.kyc_status.replace('_', ' ')}</span></div>
                 <div><strong>Email Verified:</strong> {user.is_email_verified ? <CheckCircle className="inline h-5 w-5 text-green-500" /> : <XCircle className="inline h-5 w-5 text-red-500" />}</div>
                 <div><strong>Profile Completed:</strong> {user.profile_completed_at ? new Date(user.profile_completed_at).toLocaleDateString() : 'No'}</div>
                 <div><strong>PIN Setup Completed:</strong> {user.pin_setup_completed_at ? new Date(user.pin_setup_completed_at).toLocaleDateString() : 'No'}</div>
                 <div><strong>Current Trading Plan:</strong> {mockTradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</div>
+                <div><strong>Account Status:</strong> <span className={`font-semibold ${user.is_active ? 'text-green-600' : 'text-red-600'}`}>{user.is_active ? 'Active' : 'Blocked/Inactive'}</span></div>
               </div>
-              <p className="text-sm text-muted-foreground mt-4">More sections like Trades, Copy Trading Subscriptions, Price Alerts, User Preferences would be displayed here.</p>
+              <p className="text-sm text-muted-foreground mt-4">Further user details like registration IP, last login, etc., could be added here.</p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -159,7 +148,7 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
           <Card>
             <CardHeader>
               <CardTitle>User Wallets</CardTitle>
-              <CardDescription>Manage user wallet balances. All direct adjustments are logged.</CardDescription>
+              <CardDescription>Manage user wallet balances. All direct adjustments are logged as 'ADJUSTMENT' transactions.</CardDescription>
             </CardHeader>
             <CardContent>
               {wallets.length > 0 ? (
@@ -207,7 +196,7 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
                           </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                          {transactions.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(tx => ( // Sort by newest first
+                          {transactions.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).map(tx => (
                               <tr key={tx.id}>
                                   <td className="py-3 px-3 whitespace-nowrap text-sm text-foreground">{new Date(tx.created_at).toLocaleString()}</td>
                                   <td className="py-3 px-3 whitespace-nowrap text-sm text-foreground">{tx.transaction_type}</td>
@@ -224,46 +213,27 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="settings">
-          <Card>
-              <CardHeader>
-                  <CardTitle>User Settings & Preferences</CardTitle>
-                  <CardDescription>Display user-configurable settings (read-only for admin or with specific edit permissions).</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  <p className="text-muted-foreground">User preferences data (theme, language, notification settings, default leverage, default order type) would be displayed here. Editing these would require specific admin privileges and careful consideration.</p>
-              </CardContent>
-          </Card>
-        </TabsContent>
         
         <TabsContent value="actions">
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Update KYC Status</CardTitle>
+                <CardTitle>Account Status</CardTitle>
+                <CardDescription>
+                  {user.is_active ? "User account is currently active." : "User account is currently blocked/inactive."}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="kycStatus">KYC Status</Label>
-                   <Select value={kycStatus} onValueChange={(value) => setKycStatus(value as KycStatus)}>
-                      <SelectTrigger id="kycStatus">
-                          <SelectValue placeholder="Select KYC status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                          {kycStatuses.map(status => (
-                              <SelectItem key={status} value={status}>{status.replace('_', ' ')}</SelectItem>
-                          ))}
-                      </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="kycNotes">Admin Notes (Optional)</Label>
-                  <Textarea id="kycNotes" value={kycNotes} onChange={(e) => setKycNotes(e.target.value)} placeholder="Reason for status change, internal notes..." />
-                </div>
-                <Button onClick={handleKycUpdate} disabled={isPending || kycStatus === user.kyc_status}>
-                  {isPending ? 'Updating...' : 'Update KYC Status'}
+              <CardContent>
+                <Button 
+                  onClick={handleToggleActiveStatus} 
+                  disabled={isPending}
+                  variant={user.is_active ? "destructive" : "default"}
+                >
+                  {isPending ? (user.is_active ? 'Blocking...' : 'Unblocking...') : (user.is_active ? <><UserX className="mr-2 h-4 w-4" /> Block User</> : <><UserCheck className="mr-2 h-4 w-4" /> Unblock User</>)}
                 </Button>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Blocking a user will prevent them from logging in or using platform services. Unblocking restores access. An email notification will be sent.
+                </p>
               </CardContent>
             </Card>
 
@@ -294,7 +264,6 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets, tr
         </TabsContent>
       </Tabs>
 
-      {/* Adjust Balance Dialog */}
       <AlertDialog open={isAdjustBalanceDialogOpen} onOpenChange={setIsAdjustBalanceDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
