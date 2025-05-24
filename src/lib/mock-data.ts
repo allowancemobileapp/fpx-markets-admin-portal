@@ -52,13 +52,14 @@ export const mockUsers: User[] = [
   },
 ];
 
-// Each user now has a single USDT wallet.
+// Each user now has a single USDT wallet with main balance and P&L balance.
 export let mockWallets: Wallet[] = [ 
     { 
       id: 'w1-usd', 
       user_id: mockUsers[0].id, 
       currency: 'USDT', 
       balance: 1500.00, 
+      profit_loss_balance: 250.75, // Added P&L
       is_active: true, 
       created_at: new Date().toISOString(), 
       updated_at: new Date().toISOString()
@@ -67,7 +68,8 @@ export let mockWallets: Wallet[] = [
       id: 'w2-usd', 
       user_id: mockUsers[1].id, 
       currency: 'USDT', 
-      balance: 5000.00, 
+      balance: 5000.00,
+      profit_loss_balance: -50.20, // Added P&L
       is_active: true, 
       created_at: new Date().toISOString(), 
       updated_at: new Date().toISOString()
@@ -77,6 +79,7 @@ export let mockWallets: Wallet[] = [
       user_id: mockUsers[2].id,
       currency: 'USDT',
       balance: 200.00,
+      profit_loss_balance: 0.00, // Added P&L
       is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -94,14 +97,32 @@ export let mockTransactions: Transaction[] = [
     transaction_type: 'ADJUSTMENT' as TransactionType,
     asset_code: 'BTC' as CurrencyCode, // Original asset deposited
     amount_asset: 0.05, // Amount of BTC
-    amount_usd_equivalent: 2500, // USDT value added to wallet
+    amount_usd_equivalent: 2500, // USDT value added to wallet main balance
     status: 'COMPLETED' as TransactionStatus,
-    notes: "Admin confirmed BTC deposit ref #xyz123",
+    notes: "Admin confirmed BTC deposit ref #xyz123 for main balance.",
     admin_processed_by: "SYSTEM_ADMIN",
     created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
     processed_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
   },
+  {
+    id: 'adj2-pl',
+    user_id: mockUsers[0].id,
+    username: mockUsers[0].username,
+    user_email: mockUsers[0].email,
+    wallet_id: 'w1-usd',
+    transaction_type: 'ADJUSTMENT' as TransactionType,
+    asset_code: 'USDT' as CurrencyCode, 
+    amount_asset: 50.00, 
+    amount_usd_equivalent: 50.00, 
+    status: 'COMPLETED' as TransactionStatus,
+    notes: "P&L Adjustment: Bonus for trading competition.",
+    admin_processed_by: "SYSTEM_ADMIN",
+    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
+    updated_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+    processed_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+  }
 ];
 
-export const mockInstruments: any[] = []; // Empty array
+// Instruments are no longer used per user request.
+export const mockInstruments: any[] = [];
