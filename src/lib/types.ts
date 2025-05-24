@@ -1,21 +1,9 @@
 
 export type CurrencyCode = 'USD' | 'BTC' | 'ETH' | 'USDT' | 'SOL' | 'TRX';
-// TransactionType 'DEPOSIT', 'WITHDRAWAL', 'FEE', 'TRADE_SETTLEMENT' are less relevant if only ADJUSTMENT is created by admin portal.
-// Kept for now as 'ADJUSTMENT' is a TransactionType.
+// TransactionType 'ADJUSTMENT' is the primary type created by admin portal now.
 export type TransactionType = 'DEPOSIT' | 'WITHDRAWAL' | 'FEE' | 'ADJUSTMENT' | 'TRADE_SETTLEMENT';
-// TransactionStatus 'PENDING', 'CONFIRMED', 'PROCESSING', 'FAILED', 'CANCELLED' are less relevant if not processed by admin.
-// Kept for now as 'ADJUSTMENT' transactions are 'COMPLETED'.
+// TransactionStatus 'COMPLETED' will be used for 'ADJUSTMENT'.
 export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-
-// RiskScore, CopyStatus, TradeDirection, TradeOrderType, TradeStatus are not used in the simplified version.
-// They can be removed if no other part of a larger (hypothetical) system uses them.
-// For now, keeping them doesn't break anything.
-export type RiskScore = 'LOW' | 'MEDIUM' | 'HIGH';
-export type CopyStatus = 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'PENDING_ACTIVATION';
-export type TradeDirection = 'BUY' | 'SELL';
-export type TradeOrderType = 'MARKET' | 'LIMIT' | 'STOP' | 'STOP_LIMIT';
-export type TradeStatus = 'OPEN' | 'CLOSED' | 'CANCELLED' | 'PENDING_OPEN';
-
 
 export interface TradingPlan {
   id: number;
@@ -52,45 +40,34 @@ export interface User {
 export interface Wallet {
   id: string; // UUID
   user_id: string; // UUID
-  currency: CurrencyCode;
+  currency: 'USDT'; // Single wallet currency, e.g., USDT
   balance: number;
-  pending_deposit_balance: number;
-  pending_withdrawal_balance: number;
-  is_active: boolean;
-  wallet_address?: string | null;
+  // pending_deposit_balance and pending_withdrawal_balance removed
+  is_active: boolean; // Kept for consistency, though likely always true for single wallet
+  wallet_address?: string | null; // Potentially for the platform's master USDT deposit address if needed
   memo_or_tag?: string | null;
   created_at: string; // TIMESTAMPTZ
   updated_at: string; // TIMESTAMPTZ
 }
 
-// Simplified Transaction type might be possible, but for now, keeping fields
-// as ADJUSTMENT transactions still use many of them.
 export interface Transaction {
   id: string; // UUID
   user_id: string; // UUID
-  wallet_id: string; // UUID
-  transaction_type: TransactionType;
-  asset_code: CurrencyCode;
-  amount_asset: number;
-  amount_usd_equivalent: number;
-  status: TransactionStatus;
-  external_transaction_id?: string | null;
-  deposit_address?: string | null;
-  withdrawal_address?: string | null;
-  network_fee_asset?: number | null;
-  processing_fee_asset?: number | null;
-  notes?: string | null;
-  user_remarks?: string | null;
+  wallet_id: string; // UUID (references the user's single wallet)
+  transaction_type: TransactionType; // Will be 'ADJUSTMENT' for admin actions
+  asset_code: CurrencyCode; // The original asset of the external transaction (e.g., BTC, USD)
+  amount_asset: number; // The amount of the original asset
+  amount_usd_equivalent: number; // The value by which the USDT wallet balance changed
+  status: TransactionStatus; // Will be 'COMPLETED' for adjustments
+  external_transaction_id?: string | null; // Admin can add this if relevant
+  notes?: string | null; // Admin notes for the adjustment
   admin_processed_by?: string | null;
   created_at: string;
   updated_at: string;
-  processed_at?: string | null;
-  expires_at?: string | null;
-  user_email?: string; 
-  username?: string; 
+  processed_at?: string | null; // Timestamp of when adjustment was made
+  user_email?: string; // For display in transaction list
+  username?: string;  // For display in transaction list
 }
-
-// Instrument type removed as the section is deleted.
 
 export interface Metric {
   title: string;
@@ -98,3 +75,11 @@ export interface Metric {
   change?: string;
   icon?: React.ElementType;
 }
+
+// Helper type for the balance adjustment form
+export type BalanceAdjustmentFormData = {
+  originalAssetCode: CurrencyCode;
+  originalAssetAmount: number;
+  adjustmentAmountForWallet: number; // This is the +/- value for the main USDT wallet
+  adminNotes: string;
+};

@@ -1,5 +1,5 @@
 import { findUserById } from '@/actions/userActions';
-import { mockWallets, mockTradingPlans } from '@/lib/mock-data'; // mockTransactions removed
+import { mockWallets, mockTradingPlans } from '@/lib/mock-data';
 import { UserProfileTabs } from '@/components/users/user-profile-tabs';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -32,9 +32,29 @@ export default async function UserProfilePage({ params }: { params: { id: string
     );
   }
 
-  // Fetch related data for the user (mocked for now)
-  const wallets = mockWallets.filter(w => w.user_id === user.id);
-  // Transactions are no longer passed to UserProfileTabs directly
+  // Fetch the single wallet for the user
+  const wallet = mockWallets.find(w => w.user_id === user.id);
+  
+  if (!wallet) {
+    // This case should ideally not happen if every user is guaranteed a wallet.
+    // Handle appropriately, maybe create a default wallet or show an error.
+     return (
+      <div className="space-y-6">
+        <PageHeader title="User Wallet Not Found" icon={UserIcon} />
+        <Alert variant="destructive">
+          <Terminal className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            Wallet for user "{user.username}" (ID: {params.id}) could not be found.
+          </AlertDescription>
+        </Alert>
+         <Button asChild variant="outline">
+            <Link href="/users">Back to User List</Link>
+        </Button>
+      </div>
+    );
+  }
+
   const tradingPlan = mockTradingPlans.find(tp => tp.id === user.trading_plan_id);
 
   return (
@@ -76,7 +96,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
         </div>
 
         <div className="lg:col-span-2">
-           <UserProfileTabs user={user} wallets={wallets} /> {/* transactions prop removed */}
+           <UserProfileTabs user={user} wallet={wallet} />
         </div>
       </div>
     </div>

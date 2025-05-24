@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, Users } from 'lucide-react'; // Removed Repeat, Settings, Atom
+import { LayoutDashboard, Users, ListFilter } from 'lucide-react';
 
 export interface NavItem {
   title: string;
@@ -22,7 +22,12 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Users',
     href: '/users',
     icon: Users,
-    description: 'Manage platform users.',
+    description: 'Manage platform users and their balances.',
   },
-  // Removed Transactions, Instruments, Sentiment Analyzer
+  {
+    title: 'Transaction Log',
+    href: '/transactions', // This page now shows admin adjustments
+    icon: ListFilter,
+    description: 'View log of admin balance adjustments.',
+  },
 ];

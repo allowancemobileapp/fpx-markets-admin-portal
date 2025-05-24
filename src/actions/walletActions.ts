@@ -2,102 +2,99 @@
 // src/actions/walletActions.ts
 'use server';
 
-import type { Wallet, Transaction, User } from '@/lib/types';
+import type { Wallet, Transaction, User, CurrencyCode } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendEmail } from '@/services/emailService';
 
 // Mock database state management
 let mockWalletsDB = (await import('@/lib/mock-data')).mockWallets;
-let mockTransactionsDB = (await import('@/lib/mock-data')).mockTransactions; // Still used for logging adjustments
-const mockUsersDB = (await import('@/lib/mock-data')).mockUsers; // To get user email
+let mockTransactionsDB = (await import('@/lib/mock-data')).mockTransactions; 
+const mockUsersDB = (await import('@/lib/mock-data')).mockUsers;
 
-const SetBalanceSchema = z.object({
-  walletId: z.string().uuid(),
-  newBalance: z.coerce.number().min(0, "Balance cannot be negative."),
+const AdjustBalanceSchema = z.object({
+  userId: z.string().uuid(),
+  originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), "Invalid asset code"),
+  originalAssetAmount: z.coerce.number().positive("Original asset amount must be positive."),
+  adjustmentAmountForWallet: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), // Amount to change the main (USDT) wallet by
   adminNotes: z.string().min(1, "Admin notes are required for balance adjustments."),
-  adminId: z.string().optional().default("SYSTEM_ADMIN"), // Placeholder for actual admin ID
+  adminId: z.string().optional().default("SYSTEM_ADMIN"), 
 });
 
-export async function setWalletBalance(
-  data: z.infer<typeof SetBalanceSchema>
+export async function adjustUserWalletBalance(
+  data: z.infer<typeof AdjustBalanceSchema>
 ): Promise<{ success: boolean; message: string; wallet?: Wallet }> {
-  const validatedFields = SetBalanceSchema.safeParse(data);
+  const validatedFields = AdjustBalanceSchema.safeParse(data);
   if (!validatedFields.success) {
     const errorMessages = validatedFields.error.flatten().fieldErrors;
     const fullMessage = Object.entries(errorMessages).map(([field, errors]) => `${field}: ${errors?.join(', ')}`).join('; ');
     return { success: false, message: "Validation failed: " + fullMessage };
   }
 
-  const { walletId, newBalance, adminNotes, adminId } = validatedFields.data;
+  const { userId, originalAssetCode, originalAssetAmount, adjustmentAmountForWallet, adminNotes, adminId } = validatedFields.data;
 
-  const walletIndex = mockWalletsDB.findIndex(w => w.id === walletId);
+  const user = mockUsersDB.find(u => u.id === userId);
+  if (!user) {
+    return { success: false, message: 'User not found.' };
+  }
+
+  const walletIndex = mockWalletsDB.findIndex(w => w.user_id === userId);
   if (walletIndex === -1) {
-    return { success: false, message: 'Wallet not found.' };
+    // This case should ideally not happen if every user has one wallet.
+    // We could create one here if necessary, or error out.
+    // For now, let's assume a wallet always exists as per the new model.
+    return { success: false, message: 'User wallet not found. This should not happen.' };
   }
 
   const originalWallet = { ...mockWalletsDB[walletIndex] }; // Clone for accurate old balance
   const oldBalance = originalWallet.balance;
-  const adjustmentAmount = newBalance - oldBalance;
+  const newBalance = oldBalance + adjustmentAmountForWallet;
 
-  const updatedWalletData: Partial<Wallet> = {
+  if (newBalance < 0) {
+    return { success: false, message: "Adjustment would result in a negative balance, which is not allowed." };
+  }
+  
+  mockWalletsDB[walletIndex] = {
+    ...originalWallet,
     balance: newBalance,
     updated_at: new Date().toISOString(),
   };
-
-  // Adjust pending balances based on the main balance change
-  if (newBalance > oldBalance && originalWallet.pending_deposit_balance > 0) {
-    // Balance increased, assume it's from pending deposits
-    const amountIncreased = newBalance - oldBalance;
-    updatedWalletData.pending_deposit_balance = Math.max(0, originalWallet.pending_deposit_balance - amountIncreased);
-  } else if (newBalance < oldBalance && originalWallet.pending_withdrawal_balance > 0) {
-    // Balance decreased, assume it's fulfilling pending withdrawals
-    const amountDecreased = oldBalance - newBalance;
-    updatedWalletData.pending_withdrawal_balance = Math.max(0, originalWallet.pending_withdrawal_balance - amountDecreased);
-  }
-
-
-  // Update wallet in mock DB
-  mockWalletsDB[walletIndex] = {
-    ...originalWallet,
-    ...updatedWalletData,
-  };
   const finalUpdatedWallet = mockWalletsDB[walletIndex];
-
 
   // Create an ADJUSTMENT transaction for auditing
   const adjustmentTransaction: Transaction = {
     id: crypto.randomUUID(),
-    user_id: originalWallet.user_id,
+    user_id: userId,
+    username: user.username,
+    user_email: user.email,
     wallet_id: originalWallet.id,
     transaction_type: 'ADJUSTMENT',
-    asset_code: originalWallet.currency,
-    amount_asset: adjustmentAmount, // This is the change in balance
-    amount_usd_equivalent: adjustmentAmount, // Simplified for non-USD, assuming direct value or needs conversion logic if currency != USD
-    status: 'COMPLETED', // Adjustments are typically immediate
+    asset_code: originalAssetCode, // Log the original asset
+    amount_asset: originalAssetAmount, // Log the original asset amount
+    amount_usd_equivalent: adjustmentAmountForWallet, // This is the change in the main (USDT) wallet balance
+    status: 'COMPLETED', 
     notes: `Admin Adjustment: ${adminNotes}`,
-    admin_processed_by: adminId, // In a real app, actual admin ID
+    admin_processed_by: adminId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     processed_at: new Date().toISOString(),
   };
   mockTransactionsDB.push(adjustmentTransaction);
 
-  console.log(`Admin action: Adjusted balance for wallet ${walletId}. Old: ${oldBalance}, New: ${newBalance}. Reason: ${adminNotes}. Pending Deposits: ${originalWallet.pending_deposit_balance} -> ${finalUpdatedWallet.pending_deposit_balance}, Pending Withdrawals: ${originalWallet.pending_withdrawal_balance} -> ${finalUpdatedWallet.pending_withdrawal_balance}`);
+  console.log(`Admin action: Adjusted balance for user ${userId}. Wallet ${originalWallet.id}. Old Balance: ${oldBalance} ${originalWallet.currency}, New Balance: ${newBalance} ${originalWallet.currency}. Adjustment: ${adjustmentAmountForWallet} ${originalWallet.currency}. Original tx: ${originalAssetAmount} ${originalAssetCode}. Reason: ${adminNotes}.`);
   
-  // Send email notification
-  const user = mockUsersDB.find(u => u.id === originalWallet.user_id);
-  if (user && user.email) {
+  if (user.email) {
     await sendEmail({
       to: user.email,
-      subject: `Your ${originalWallet.currency} Wallet Balance Updated by Admin`,
-      body: `Dear ${user.username || 'User'},\n\nAn administrator has updated your ${originalWallet.currency} wallet balance.\n\nOld Balance: ${oldBalance.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nNew Balance: ${newBalance.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nAdjustment Amount: ${adjustmentAmount.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nReason: ${adminNotes}\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
+      subject: `Your Account Balance Has Been Updated by Admin`,
+      body: `Dear ${user.username || 'User'},\n\nAn administrator has updated your account balance.\n\nDetails of original transaction: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode}\nChange to your main account balance: ${adjustmentAmountForWallet > 0 ? '+' : ''}${adjustmentAmountForWallet.toFixed(2)} ${finalUpdatedWallet.currency}\nNew Account Balance: ${newBalance.toFixed(2)} ${finalUpdatedWallet.currency}\nReason: ${adminNotes}\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
     });
   }
 
-  revalidatePath(`/users/${originalWallet.user_id}`);
-  // No longer revalidating '/transactions' page as it's removed.
-  // Adjustment transactions are still logged but not viewed through a dedicated page.
+  revalidatePath(`/users/${userId}`);
+  // Revalidate transactions page if it exists and shows adjustments
+  // For now, we assume it does.
+  revalidatePath(`/transactions`); 
   
-  return { success: true, message: 'Wallet balance updated successfully and adjustment logged.', wallet: finalUpdatedWallet };
+  return { success: true, message: 'User wallet balance updated successfully and adjustment logged.', wallet: finalUpdatedWallet };
 }

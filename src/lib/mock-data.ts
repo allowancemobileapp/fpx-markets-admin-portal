@@ -1,5 +1,4 @@
 import type { User, Transaction, TradingPlan, Wallet, TransactionStatus, CurrencyCode, TransactionType } from './types';
-// Instrument type removed
 
 export const mockTradingPlans: TradingPlan[] = [
   { id: 1, name: 'Beginner', minimum_deposit_usd: 500, description: 'Ideal for new traders.', allow_copy_trading: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), commission_details: {"forex_pip_spread": 1.5, "crypto_percent": 0.1}, leverage_info: {"max_leverage": "1:30"} },
@@ -53,36 +52,56 @@ export const mockUsers: User[] = [
   },
 ];
 
-export let mockWallets: Wallet[] = [ // Changed to let for modification by server actions
-    { id: 'w1', user_id: mockUsers[0].id, currency: 'USD' as CurrencyCode, balance: 1500.00, pending_deposit_balance: 200, pending_withdrawal_balance: 50, is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString()},
-    { id: 'w2', user_id: mockUsers[0].id, currency: 'BTC' as CurrencyCode, balance: 0.5, pending_deposit_balance: 0.1, pending_withdrawal_balance: 0, is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString()},
-    { id: 'w3', user_id: mockUsers[1].id, currency: 'USD' as CurrencyCode, balance: 5000.00, pending_deposit_balance: 1000, pending_withdrawal_balance: 0, is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString()},
+// Each user now has a single USDT wallet.
+export let mockWallets: Wallet[] = [ 
+    { 
+      id: 'w1-usd', 
+      user_id: mockUsers[0].id, 
+      currency: 'USDT', 
+      balance: 1500.00, 
+      is_active: true, 
+      created_at: new Date().toISOString(), 
+      updated_at: new Date().toISOString()
+    },
+    { 
+      id: 'w2-usd', 
+      user_id: mockUsers[1].id, 
+      currency: 'USDT', 
+      balance: 5000.00, 
+      is_active: true, 
+      created_at: new Date().toISOString(), 
+      updated_at: new Date().toISOString()
+    },
+    {
+      id: 'w3-usd',
+      user_id: mockUsers[2].id,
+      currency: 'USDT',
+      balance: 200.00,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
 ];
 
-
 // mockTransactions will now primarily store 'ADJUSTMENT' transactions created by admins.
-// Existing example transactions can be kept or cleared.
-export let mockTransactions: Transaction[] = [ // Changed to let for modification by server actions
+export let mockTransactions: Transaction[] = [
   {
-    id: 't1a2b3c4-d5e6-f789-0123-456789abcdef',
+    id: 'adj1',
     user_id: mockUsers[0].id,
     username: mockUsers[0].username,
     user_email: mockUsers[0].email,
-    wallet_id: 'w1',
-    transaction_type: 'DEPOSIT' as TransactionType, // Example of an old transaction
-    asset_code: 'USD' as CurrencyCode,
-    amount_asset: 1000,
-    amount_usd_equivalent: 1000,
+    wallet_id: 'w1-usd', // references user's single wallet
+    transaction_type: 'ADJUSTMENT' as TransactionType,
+    asset_code: 'BTC' as CurrencyCode, // Original asset deposited
+    amount_asset: 0.05, // Amount of BTC
+    amount_usd_equivalent: 2500, // USDT value added to wallet
     status: 'COMPLETED' as TransactionStatus,
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    processed_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    external_transaction_id: 'ext_deposit_001',
-    notes: "Initial deposit from user",
+    notes: "Admin confirmed BTC deposit ref #xyz123",
+    admin_processed_by: "SYSTEM_ADMIN",
+    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    processed_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
   },
-  // More example transactions can be added here or this can be initially empty.
-  // Admin adjustments will add to this list.
 ];
 
-// mockInstruments removed
-export const mockInstruments: any[] = []; // Empty array to avoid import errors if any file still tries to import it.
+export const mockInstruments: any[] = []; // Empty array

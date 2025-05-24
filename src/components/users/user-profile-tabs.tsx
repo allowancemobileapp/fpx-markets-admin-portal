@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { User, Wallet } from '@/lib/types'; // Transaction removed
+import type { User, Wallet, CurrencyCode, BalanceAdjustmentFormData } from '@/lib/types';
 import { mockTradingPlans } from '@/lib/mock-data';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,9 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userActions';
-import { setWalletBalance } from '@/actions/walletActions';
+import { adjustUserWalletBalance } from '@/actions/walletActions';
 import { useState, useTransition, useEffect } from 'react';
-import { CheckCircle, XCircle, UserX, UserCheck, Edit3 } from 'lucide-react'; // DollarSign changed to Edit3
+import { UserX, UserCheck, Edit3, WalletCards } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,32 +25,54 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+
+
+const BalanceAdjustmentFormSchema = z.object({
+  originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), {
+    message: "Please select a valid asset for the original transaction.",
+  }),
+  originalAssetAmount: z.coerce.number().positive("Original asset amount must be a positive number."),
+  adjustmentAmountForWallet: z.coerce.number().refine(val => val !== 0, "Wallet adjustment amount cannot be zero."),
+  adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
+});
+
 
 interface UserProfileTabsProps {
   user: User;
-  wallets: Wallet[];
-  // transactions prop removed
+  wallet: Wallet; // Now a single wallet object
 }
 
-export function UserProfileTabs({ user: initialUser, wallets: initialWallets }: UserProfileTabsProps) {
+const availableAssetCodes: CurrencyCode[] = ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'];
+
+export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: UserProfileTabsProps) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   
   const [user, setUser] = useState<User>(initialUser);
-  const [wallets, setWallets] = useState<Wallet[]>(initialWallets);
+  const [wallet, setWallet] = useState<Wallet>(initialWallet);
 
   const [selectedTradingPlanId, setSelectedTradingPlanId] = useState<number>(user.trading_plan_id);
-
   const [isAdjustBalanceDialogOpen, setIsAdjustBalanceDialogOpen] = useState(false);
-  const [selectedWalletForAdjustment, setSelectedWalletForAdjustment] = useState<Wallet | null>(null);
-  const [newBalanceInput, setNewBalanceInput] = useState('');
-  const [balanceAdjustmentNotes, setBalanceAdjustmentNotes] = useState('');
+
+  const form = useForm<BalanceAdjustmentFormData>({
+    resolver: zodResolver(BalanceAdjustmentFormSchema),
+    defaultValues: {
+      originalAssetCode: 'USD',
+      originalAssetAmount: 0,
+      adjustmentAmountForWallet: 0,
+      adminNotes: '',
+    },
+  });
   
   useEffect(() => {
     setUser(initialUser);
-    setWallets(initialWallets);
+    setWallet(initialWallet);
     setSelectedTradingPlanId(initialUser.trading_plan_id);
-  }, [initialUser, initialWallets]);
+  }, [initialUser, initialWallet]);
 
 
   const handleTradingPlanUpdate = () => {
@@ -77,55 +99,34 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets }: 
     });
   };
 
-  const openEditBalanceDialog = (wallet: Wallet) => {
-    setSelectedWalletForAdjustment(wallet);
-    setNewBalanceInput(wallet.balance.toString()); // Pre-fill with current balance
-    setBalanceAdjustmentNotes('');
+  const openAdjustBalanceDialog = () => {
+    form.reset(); // Reset form on open
     setIsAdjustBalanceDialogOpen(true);
   };
 
-  const handleBalanceAdjustment = () => {
-    if (!selectedWalletForAdjustment || newBalanceInput === '') return;
-    const newBalance = parseFloat(newBalanceInput);
-    if (isNaN(newBalance) || newBalance < 0) {
-      toast({ title: "Error", description: "Invalid balance amount. Must be a non-negative number.", variant: "destructive" });
-      return;
-    }
-    if (!balanceAdjustmentNotes.trim()) {
-      toast({ title: "Error", description: "Admin notes are required for balance adjustment.", variant: "destructive" });
-      return;
-    }
-
+  const handleBalanceAdjustmentSubmit = (data: BalanceAdjustmentFormData) => {
     startTransition(async () => {
-      const result = await setWalletBalance({
-        walletId: selectedWalletForAdjustment.id,
-        newBalance: newBalance,
-        adminNotes: balanceAdjustmentNotes, // adminNotes is now required
+      const result = await adjustUserWalletBalance({
+        userId: user.id,
+        ...data,
       });
 
       if (result.success && result.wallet) {
-        setWallets(prevWallets => 
-          prevWallets.map(w => w.id === result.wallet!.id ? result.wallet! : w)
-        );
+        setWallet(result.wallet);
         toast({ title: "Success", description: result.message });
         setIsAdjustBalanceDialogOpen(false);
-        setSelectedWalletForAdjustment(null);
-        setNewBalanceInput('');
-        setBalanceAdjustmentNotes('');
       } else {
         toast({ title: "Error", description: result.message, variant: "destructive" });
       }
     });
   };
 
-
   return (
     <>
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-4"> {/* Adjusted to 3 cols */}
+        <TabsList className="grid w-full grid-cols-3 mb-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="wallets">Wallets</TabsTrigger>
-          {/* Transactions TabTrigger removed */}
+          <TabsTrigger value="wallet">Wallet</TabsTrigger>
           <TabsTrigger value="actions">Admin Actions</TabsTrigger>
         </TabsList>
 
@@ -138,51 +139,39 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets }: 
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div><strong>Firebase UID:</strong> <span className="text-sm text-muted-foreground">{user.firebase_auth_uid}</span></div>
-                <div><strong>Email Verified:</strong> {user.is_email_verified ? <CheckCircle className="inline h-5 w-5 text-green-500" /> : <XCircle className="inline h-5 w-5 text-red-500" />}</div>
+                <div><strong>Email Verified:</strong> {user.is_email_verified ? <span className="text-green-600">Yes</span> : <span className="text-red-600">No</span>}</div>
                 <div><strong>Profile Completed:</strong> {user.profile_completed_at ? new Date(user.profile_completed_at).toLocaleDateString() : 'No'}</div>
                 <div><strong>PIN Setup Completed:</strong> {user.pin_setup_completed_at ? new Date(user.pin_setup_completed_at).toLocaleDateString() : 'No'}</div>
                 <div><strong>Current Trading Plan:</strong> {mockTradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</div>
                 <div><strong>Account Status:</strong> <span className={`font-semibold ${user.is_active ? 'text-green-600' : 'text-red-600'}`}>{user.is_active ? 'Active' : 'Blocked/Inactive'}</span></div>
               </div>
-              <p className="text-sm text-muted-foreground mt-4">Further user details like registration IP, last login, etc., could be added here.</p>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="wallets">
-          <Card>
-            <CardHeader>
-              <CardTitle>User Wallets</CardTitle>
-              <CardDescription>Manage user wallet balances. Direct adjustments are logged as 'ADJUSTMENT' transactions.</CardDescription>
+        <TabsContent value="wallet">
+          <Card className="shadow-md">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <div>
+                <CardTitle className="text-2xl font-bold">Account Balance</CardTitle>
+                <CardDescription>User's main account balance in {wallet.currency}.</CardDescription>
+              </div>
+              <WalletCards className="h-8 w-8 text-accent" />
             </CardHeader>
-            <CardContent>
-              {wallets.length > 0 ? (
-                <ul className="space-y-4">
-                  {wallets.map(wallet => (
-                    <li key={wallet.id} className="p-4 border rounded-lg shadow-sm">
-                      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                        <div className="flex-grow">
-                          <p className="text-lg font-semibold">{wallet.currency} Wallet</p>
-                          <p>
-                            <strong>Current Balance: {wallet.balance.toFixed(wallet.currency === 'USD' ? 2 : 8)} {wallet.currency}</strong>
-                          </p>
-                          <p className="text-sm text-muted-foreground">Pending Deposit: {wallet.pending_deposit_balance.toFixed(wallet.currency === 'USD' ? 2 : 8)}</p>
-                          <p className="text-sm text-muted-foreground">Pending Withdrawal: {wallet.pending_withdrawal_balance.toFixed(wallet.currency === 'USD' ? 2 : 8)}</p>
-                          <p className="text-xs text-muted-foreground mt-1">ID: {wallet.id}</p>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={() => openEditBalanceDialog(wallet)} className="w-full sm:w-auto">
-                          <Edit3 className="mr-2 h-4 w-4" /> Edit Balance
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : <p>No wallets found for this user.</p>}
+            <CardContent className="space-y-6">
+              <div className="text-4xl font-bold text-primary">
+                {wallet.balance.toFixed(2)} <span className="text-2xl text-muted-foreground">{wallet.currency}</span>
+              </div>
+              <Button onClick={openAdjustBalanceDialog} className="w-full sm:w-auto" variant="outline">
+                <Edit3 className="mr-2 h-4 w-4" /> Adjust Balance
+              </Button>
+              <p className="text-xs text-muted-foreground pt-2">
+                Wallet ID: {wallet.id} <br/>
+                Last Updated: {new Date(wallet.updated_at).toLocaleString()}
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* Transactions TabContent removed */}
         
         <TabsContent value="actions">
           <div className="space-y-6">
@@ -234,54 +223,87 @@ export function UserProfileTabs({ user: initialUser, wallets: initialWallets }: 
         </TabsContent>
       </Tabs>
 
-      <AlertDialog open={isAdjustBalanceDialogOpen} onOpenChange={(open) => {
-          if (!open) {
-            setSelectedWalletForAdjustment(null);
-            setNewBalanceInput('');
-            setBalanceAdjustmentNotes('');
-          }
-          setIsAdjustBalanceDialogOpen(open);
-        }}
-      >
-        <AlertDialogContent>
+      <AlertDialog open={isAdjustBalanceDialogOpen} onOpenChange={setIsAdjustBalanceDialogOpen}>
+        <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Edit Wallet Balance for {selectedWalletForAdjustment?.currency}</AlertDialogTitle>
+            <AlertDialogTitle>Adjust User Account Balance</AlertDialogTitle>
             <AlertDialogDescription>
-              Current Balance: <span className="font-semibold">{selectedWalletForAdjustment?.balance.toFixed(selectedWalletForAdjustment?.currency === 'USD' ? 2 : 8)} {selectedWalletForAdjustment?.currency}</span>.
-              <br/>
-              Enter the new total balance for this wallet. Pending balances may be adjusted. An adjustment transaction will be logged.
+              Current Balance: <span className="font-semibold">{wallet.balance.toFixed(2)} {wallet.currency}</span>.
+              This action logs an adjustment transaction and notifies the user.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label htmlFor="newBalance">New Total Balance</Label>
-              <Input
-                id="newBalance"
-                type="number"
-                value={newBalanceInput}
-                onChange={(e) => setNewBalanceInput(e.target.value)}
-                placeholder={`Enter new ${selectedWalletForAdjustment?.currency} balance`}
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleBalanceAdjustmentSubmit)} className="space-y-4 py-2">
+              <FormField
+                control={form.control}
+                name="originalAssetCode"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Asset of External Transaction</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select asset" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableAssetCodes.map(code => (
+                          <SelectItem key={code} value={code}>{code}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div>
-              <Label htmlFor="balanceAdjustmentNotes">Admin Notes (Required)</Label>
-              <Textarea
-                id="balanceAdjustmentNotes"
-                value={balanceAdjustmentNotes}
-                onChange={(e) => setBalanceAdjustmentNotes(e.target.value)}
-                placeholder="Reason for balance adjustment (e.g., confirmed deposit #123, bonus, correction)"
+              <FormField
+                control={form.control}
+                name="originalAssetAmount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount of External Asset</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="any" placeholder="e.g., 0.5 or 1000" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleBalanceAdjustment} 
-              disabled={isPending || !balanceAdjustmentNotes.trim() || newBalanceInput === '' || parseFloat(newBalanceInput) < 0 || (selectedWalletForAdjustment && parseFloat(newBalanceInput) === selectedWalletForAdjustment.balance)}
-            >
-              {isPending ? 'Saving...' : 'Save New Balance'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
+              <FormField
+                control={form.control}
+                name="adjustmentAmountForWallet"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Change to Account Balance (+/- {wallet.currency})</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="any" placeholder="e.g., +5000 or -100" {...field} />
+                    </FormControl>
+                    <FormDescription>Enter positive for deposits/credits, negative for withdrawals/debits.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="adminNotes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Admin Notes (Required)</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Reason for adjustment, transaction ID, etc." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <AlertDialogFooter className="pt-4">
+                <AlertDialogCancel onClick={() => setIsAdjustBalanceDialogOpen(false)}>Cancel</AlertDialogCancel>
+                <Button type="submit" disabled={isPending}>
+                  {isPending ? 'Applying...' : 'Apply Adjustment'}
+                </Button>
+              </AlertDialogFooter>
+            </form>
+          </Form>
         </AlertDialogContent>
       </AlertDialog>
     </>
