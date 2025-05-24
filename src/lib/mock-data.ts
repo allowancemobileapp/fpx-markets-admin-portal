@@ -1,3 +1,4 @@
+
 import type { User, Transaction, TradingPlan, Wallet, TransactionStatus, CurrencyCode, TransactionType } from './types';
 
 export const mockTradingPlans: TradingPlan[] = [
@@ -59,7 +60,7 @@ export let mockWallets: Wallet[] = [
       user_id: mockUsers[0].id, 
       currency: 'USDT', 
       balance: 1500.00, 
-      profit_loss_balance: 250.75, // Added P&L
+      profit_loss_balance: 250.75,
       is_active: true, 
       created_at: new Date().toISOString(), 
       updated_at: new Date().toISOString()
@@ -69,7 +70,7 @@ export let mockWallets: Wallet[] = [
       user_id: mockUsers[1].id, 
       currency: 'USDT', 
       balance: 5000.00,
-      profit_loss_balance: -50.20, // Added P&L
+      profit_loss_balance: -50.20,
       is_active: true, 
       created_at: new Date().toISOString(), 
       updated_at: new Date().toISOString()
@@ -79,7 +80,7 @@ export let mockWallets: Wallet[] = [
       user_id: mockUsers[2].id,
       currency: 'USDT',
       balance: 200.00,
-      profit_loss_balance: 0.00, // Added P&L
+      profit_loss_balance: 0.00,
       is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -87,17 +88,31 @@ export let mockWallets: Wallet[] = [
 ];
 
 // mockTransactions will now primarily store 'ADJUSTMENT' transactions created by admins.
+// For mock data, balance_after_transaction will be based on initial mockWallets.
+const user0InitialBalance = mockWallets.find(w => w.user_id === mockUsers[0].id)?.balance || 0;
+const user0InitialPL = mockWallets.find(w => w.user_id === mockUsers[0].id)?.profit_loss_balance || 0;
+
+const adj1MainBalanceEffect = 2500;
+const adj1BalanceAfter = user0InitialBalance + adj1MainBalanceEffect;
+
+const adj2PLEffect = 50.00;
+// const adj2PLBalanceAfter = user0InitialPL + adj2PLEffect; // P&L balance after
+// Main balance after P&L adjustment remains the same as after adj1 for this example.
+const adj2MainBalanceAfterPL = adj1BalanceAfter;
+
+
 export let mockTransactions: Transaction[] = [
   {
     id: 'adj1',
     user_id: mockUsers[0].id,
     username: mockUsers[0].username,
     user_email: mockUsers[0].email,
-    wallet_id: 'w1-usd', // references user's single wallet
+    wallet_id: 'w1-usd', 
     transaction_type: 'ADJUSTMENT' as TransactionType,
-    asset_code: 'BTC' as CurrencyCode, // Original asset deposited
-    amount_asset: 0.05, // Amount of BTC
-    amount_usd_equivalent: 2500, // USDT value added to wallet main balance
+    asset_code: 'BTC' as CurrencyCode, 
+    amount_asset: 0.05, 
+    amount_usd_equivalent: adj1MainBalanceEffect, 
+    balance_after_transaction: adj1BalanceAfter,
     status: 'COMPLETED' as TransactionStatus,
     notes: "Admin confirmed BTC deposit ref #xyz123 for main balance.",
     admin_processed_by: "SYSTEM_ADMIN",
@@ -113,12 +128,13 @@ export let mockTransactions: Transaction[] = [
     wallet_id: 'w1-usd',
     transaction_type: 'ADJUSTMENT' as TransactionType,
     asset_code: 'USDT' as CurrencyCode, 
-    amount_asset: 50.00, 
-    amount_usd_equivalent: 50.00, 
+    amount_asset: adj2PLEffect, 
+    amount_usd_equivalent: adj2PLEffect, 
+    balance_after_transaction: adj2MainBalanceAfterPL, // Main balance after P&L op
     status: 'COMPLETED' as TransactionStatus,
     notes: "P&L Adjustment: Bonus for trading competition.",
     admin_processed_by: "SYSTEM_ADMIN",
-    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
+    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), 
     updated_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
     processed_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
   }

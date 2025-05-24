@@ -3,7 +3,7 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, Search, Filter, MessageSquare } from 'lucide-react'; // Removed Edit, CheckCircle, XCircle, MoreVertical
+import { Eye, Search, Filter, MessageSquare } from 'lucide-react'; 
 import type { Transaction, TransactionStatus, TransactionType, CurrencyCode } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,34 +15,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  // DropdownMenuSeparator, // Not needed if only view/note
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { format } from 'date-fns';
-// import { processTransaction, addTransactionNote } from '@/actions/transactionActions'; // processTransaction removed
-// For now, let's assume addTransactionNote might still be useful for adjustments, or remove it.
-// For simplicity, let's remove addTransactionNote as notes are part of the adjustment itself.
-import { useToast } from '@/hooks/use-toast';
-/*
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Textarea } from '@/components/ui/textarea';
-*/
+
 import Link from 'next/link';
 
 interface TransactionTableClientProps {
@@ -53,16 +31,9 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
   const [transactions, setTransactions] = React.useState<Transaction[]>(initialTransactions);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<TransactionStatus | 'all'>('all');
-  const [typeFilter, setTypeFilter] = React.useState<TransactionType | 'all'>('all'); // Should primarily be 'ADJUSTMENT'
+  const [typeFilter, setTypeFilter] = React.useState<TransactionType | 'all'>('all'); 
   const [assetFilter, setAssetFilter] = React.useState<CurrencyCode | 'all'>('all');
   
-  // const { toast } = useToast();
-  // const [isPending, startTransition] = React.useTransition();
-
-  // States for dialogs (processingTx, actionType, adminNotes, addingNoteTx, newNote) are removed
-  // as processing actions are removed.
-
-  // handleProcessAction and handleAddNote removed.
 
   React.useEffect(() => {
     setTransactions(initialTransactions);
@@ -80,7 +51,7 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
       const matchesType = typeFilter === 'all' || tx.transaction_type === typeFilter;
       const matchesAsset = assetFilter === 'all' || tx.asset_code === assetFilter;
       return matchesSearch && matchesStatus && matchesType && matchesAsset;
-    });
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); // Sort by most recent
   }, [transactions, searchTerm, statusFilter, typeFilter, assetFilter]);
 
   const getStatusBadge = (status: TransactionStatus) => {
@@ -94,11 +65,10 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
     }
   };
 
-  const transactionStatuses: TransactionStatus[] = ['COMPLETED', 'PENDING', 'PROCESSING', 'FAILED', 'CANCELLED']; // COMPLETED is main one for adjustments
-  const transactionTypes: TransactionType[] = ['ADJUSTMENT', 'DEPOSIT', 'WITHDRAWAL', 'FEE', 'TRADE_SETTLEMENT']; // ADJUSTMENT is primary
+  const transactionStatuses: TransactionStatus[] = ['COMPLETED', 'PENDING', 'PROCESSING', 'FAILED', 'CANCELLED']; 
+  const transactionTypes: TransactionType[] = ['ADJUSTMENT', 'DEPOSIT', 'WITHDRAWAL', 'FEE', 'TRADE_SETTLEMENT']; 
   const assetCodes: CurrencyCode[] = ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'];
 
-  // openProcessDialog and openAddNoteDialog removed.
 
   return (
     <>
@@ -150,9 +120,9 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
                 <TableHead>Original Asset</TableHead>
                 <TableHead>Original Amount</TableHead>
                 <TableHead>Adjustment Value (USDT)</TableHead>
+                <TableHead>Final Balance (USDT)</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Notes</TableHead>
-                {/* <TableHead className="text-right">Actions</TableHead> Actions column can be removed if only viewing */}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -166,14 +136,14 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
                   </TableCell>
                   <TableCell>{tx.transaction_type}</TableCell>
                   <TableCell>{tx.asset_code}</TableCell>
-                  <TableCell>{tx.amount_asset.toFixed(tx.asset_code === 'USD' || tx.asset_code === 'USDT' ? 2 : 8)}</TableCell>
+                  <TableCell>{tx.amount_asset.toFixed(tx.asset_code === 'USD' || tx.asset_code === 'USDT' ? 2 : (tx.asset_code === 'BTC' ? 8 : 6))}</TableCell>
                   <TableCell>{tx.amount_usd_equivalent.toFixed(2)}</TableCell>
+                  <TableCell>{tx.balance_after_transaction !== undefined ? tx.balance_after_transaction.toFixed(2) : 'N/A'}</TableCell>
                   <TableCell>{getStatusBadge(tx.status)}</TableCell>
                   <TableCell className="max-w-xs truncate" title={tx.notes || undefined}>{tx.notes || 'N/A'}</TableCell>
-                  {/* Action dropdown removed for simplicity, can be added back for "View Details" or "Add Note" if needed */}
                 </TableRow>
               )) : (
-                <TableRow><TableCell colSpan={8} className="text-center h-24">No transactions found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center h-24">No transactions found.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
@@ -185,7 +155,6 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
         </div>
       </CardContent>
     </Card>
-    {/* Dialogs for processing/adding notes are removed */}
     </>
   );
 }

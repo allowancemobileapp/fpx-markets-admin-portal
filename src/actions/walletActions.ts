@@ -2,7 +2,7 @@
 // src/actions/walletActions.ts
 'use server';
 
-import type { Wallet, Transaction, User, CurrencyCode, AdjustPandLServerActionData } from '@/lib/types';
+import type { Wallet, Transaction, User, CurrencyCode, AdjustBalanceServerActionData, AdjustPandLServerActionData } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendEmail } from '@/services/emailService';
@@ -42,27 +42,6 @@ export async function adjustUserWalletBalance(
 
   const walletIndex = mockWalletsDB.findIndex(w => w.user_id === userId);
   if (walletIndex === -1) {
-    // This should ideally not happen with the single wallet model
-    // If it does, we might need to create a wallet for the user.
-    // For now, assume wallet always exists if user exists.
-     mockWalletsDB.push({
-        id: crypto.randomUUID(),
-        user_id: userId,
-        currency: 'USDT',
-        balance: 0,
-        profit_loss_balance: 0,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-    });
-    const newWalletIndex = mockWalletsDB.findIndex(w => w.user_id === userId);
-    if (newWalletIndex === -1) return { success: false, message: 'User wallet could not be created.' };
-     // Re-assign walletIndex to the newly created wallet
-    // This scenario is unlikely if data integrity is maintained but handles a potential edge case.
-    // A more robust solution would involve checking for wallet existence when user is loaded.
-    // For this simplified version, this ensures a wallet is present.
-    // The above push should ideally be in user creation logic, not here.
-    // Reverting to previous logic: Wallet should always exist.
     return { success: false, message: 'User wallet not found. This indicates a data integrity issue.' };
   }
 
@@ -79,7 +58,7 @@ export async function adjustUserWalletBalance(
   const oldBalance = originalWallet.balance;
   const newBalance = oldBalance + adjustmentAmountForWallet; 
 
-  if (newBalance < 0 && adjustmentAmountForWallet < 0) { // Only restrict if adjustment makes it negative due to withdrawal
+  if (newBalance < 0 && adjustmentAmountForWallet < 0) { 
      return { success: false, message: "Adjustment would result in a negative main balance. Operation cancelled." };
   }
   
@@ -100,8 +79,9 @@ export async function adjustUserWalletBalance(
     asset_code: originalAssetCode, 
     amount_asset: originalAssetAmount, 
     amount_usd_equivalent: adjustmentAmountForWallet, 
+    balance_after_transaction: finalUpdatedWallet.balance, // Store final main balance
     status: 'COMPLETED', 
-    notes: `Main Balance Adjustment: ${adminNotes}`, // Clarify note
+    notes: `Main Balance Adjustment: ${adminNotes}`,
     admin_processed_by: adminId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -109,7 +89,7 @@ export async function adjustUserWalletBalance(
   };
   mockTransactionsDB.push(adjustmentTransaction);
 
-  console.log(`Admin action: Adjusted MAIN balance for user ${userId}. Wallet ${originalWallet.id}. Old Balance: ${oldBalance} ${originalWallet.currency}, New Balance: ${newBalance} ${newBalance} ${originalWallet.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Reason: ${adminNotes}.`);
+  console.log(`Admin action: Adjusted MAIN balance for user ${userId}. Wallet ${originalWallet.id}. Old Balance: ${oldBalance} ${originalWallet.currency}, New Balance: ${newBalance} ${originalWallet.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${finalUpdatedWallet.balance.toFixed(2)} USDT. Reason: ${adminNotes}.`);
   
   if (user.email) {
     await sendEmail({
@@ -129,7 +109,7 @@ export async function adjustUserWalletBalance(
 // Schema for P&L balance adjustment
 const AdjustPandLServerSchema = z.object({
   userId: z.string().uuid(),
-  adjustmentAmount: z.coerce.number(), // Can be positive or negative
+  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), 
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
   adminId: z.string().optional().default("SYSTEM_ADMIN"),
 });
@@ -160,14 +140,13 @@ export async function adjustUserProfitLossBalance(
   const oldPandLBalance = originalWallet.profit_loss_balance;
   const newPandLBalance = oldPandLBalance + adjustmentAmount;
 
-  // P&L can go negative, so no check like main balance here unless specified.
 
   mockWalletsDB[walletIndex] = {
     ...originalWallet,
     profit_loss_balance: newPandLBalance,
-    updated_at: new Date().toISOString(), // Also update wallet's main updated_at
+    updated_at: new Date().toISOString(), 
   };
-  const finalUpdatedWallet = mockWalletsDB[walletIndex];
+  const finalUpdatedWallet = mockWalletsDB[walletIndex]; // This now contains the updated P&L and the current main balance
 
   const pAndLTransaction: Transaction = {
     id: crypto.randomUUID(),
@@ -176,11 +155,12 @@ export async function adjustUserProfitLossBalance(
     user_email: user.email,
     wallet_id: originalWallet.id,
     transaction_type: 'ADJUSTMENT',
-    asset_code: 'USDT', // P&L adjustments are in USDT
+    asset_code: 'USDT', 
     amount_asset: adjustmentAmount, 
-    amount_usd_equivalent: adjustmentAmount, // Same as amount_asset for USDT
+    amount_usd_equivalent: adjustmentAmount, 
+    balance_after_transaction: finalUpdatedWallet.balance, // Store final main balance
     status: 'COMPLETED',
-    notes: `P&L Adjustment: ${adminNotes}`, // Clarify note
+    notes: `P&L Adjustment: ${adminNotes}`, 
     admin_processed_by: adminId,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -188,7 +168,7 @@ export async function adjustUserProfitLossBalance(
   };
   mockTransactionsDB.push(pAndLTransaction);
   
-  console.log(`Admin action: Adjusted P&L balance for user ${userId}. Wallet ${originalWallet.id}. Old P&L Balance: ${oldPandLBalance.toFixed(2)} USDT, New P&L Balance: ${newPandLBalance.toFixed(2)} USDT. Adjustment: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} USDT. Reason: ${adminNotes}.`);
+  console.log(`Admin action: Adjusted P&L balance for user ${userId}. Wallet ${originalWallet.id}. Old P&L Balance: ${oldPandLBalance.toFixed(2)} USDT, New P&L Balance: ${newPandLBalance.toFixed(2)} USDT. Adjustment: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} USDT. Final Main Balance after this P&L op: ${finalUpdatedWallet.balance.toFixed(2)} USDT. Reason: ${adminNotes}.`);
 
   if (user.email) {
     await sendEmail({

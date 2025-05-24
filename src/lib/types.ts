@@ -63,6 +63,8 @@ export interface Transaction {
   // Value of the adjustment in the main wallet's currency (USDT)
   amount_usd_equivalent: number;    // The value by which the USDT wallet balance changed (can be +/-)
   
+  balance_after_transaction?: number; // User's main wallet balance after this transaction
+
   status: TransactionStatus; // Will be 'COMPLETED' for adjustments
   external_transaction_id?: string | null; // Admin can add this if relevant
   notes?: string | null; // Admin notes for the adjustment
@@ -78,11 +80,13 @@ export interface Transaction {
 export type BalanceAdjustmentFormData = {
   originalAssetCode: CurrencyCode;
   originalAssetAmount: number;
+  // adjustmentAmountForWallet: number; // This is now calculated
   adminNotes: string;
 };
 
-export interface AdjustBalanceServerActionData extends BalanceAdjustmentFormData {
+export interface AdjustBalanceServerActionData extends Omit<BalanceAdjustmentFormData, 'adjustmentAmountForWallet'> {
   userId: string;
+  // originalAssetCode, originalAssetAmount, adminNotes are inherited
 }
 
 // For Profit & Loss balance adjustment (direct USDT adjustment)
