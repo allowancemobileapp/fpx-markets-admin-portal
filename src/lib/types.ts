@@ -1,4 +1,5 @@
 
+
 export type CurrencyCode = 'USD' | 'BTC' | 'ETH' | 'USDT' | 'SOL' | 'TRX';
 // TransactionType 'ADJUSTMENT' is the primary type created by admin portal now.
 export type TransactionType = 'DEPOSIT' | 'WITHDRAWAL' | 'FEE' | 'ADJUSTMENT' | 'TRADE_SETTLEMENT';
@@ -28,36 +29,40 @@ export interface User {
   phone_number?: string | null;
   country_code?: string | null; // CHAR(2)
   trading_plan_id: number;
-  trading_pin_hash?: string | null;
+  // trading_pin_hash removed as KYC/direct pin management isn't in scope for admin app now
   profile_completed_at?: string | null; // TIMESTAMPTZ
-  pin_setup_completed_at?: string | null; // TIMESTAMPTZ
+  pin_setup_completed_at?: string | null; // TIMESTAMPTZ - this might be for user's own trading pin
   is_active: boolean;
   is_email_verified: boolean;
   created_at: string; // TIMESTAMPTZ
   updated_at: string; // TIMESTAMPTZ
 }
 
+// Simplified Wallet: Each user has one main wallet, assumed to be USDT denominated.
 export interface Wallet {
   id: string; // UUID
   user_id: string; // UUID
-  currency: 'USDT'; // Single wallet currency, e.g., USDT
+  currency: 'USDT'; // Fixed to USDT for the main account balance
   balance: number;
-  // pending_deposit_balance and pending_withdrawal_balance removed
-  is_active: boolean; // Kept for consistency, though likely always true for single wallet
-  wallet_address?: string | null; // Potentially for the platform's master USDT deposit address if needed
-  memo_or_tag?: string | null;
+  is_active: boolean; // Should always be true for the single main wallet
   created_at: string; // TIMESTAMPTZ
   updated_at: string; // TIMESTAMPTZ
 }
 
+
 export interface Transaction {
   id: string; // UUID
   user_id: string; // UUID
-  wallet_id: string; // UUID (references the user's single wallet)
+  wallet_id: string; // UUID (references the user's single USDT wallet)
   transaction_type: TransactionType; // Will be 'ADJUSTMENT' for admin actions
-  asset_code: CurrencyCode; // The original asset of the external transaction (e.g., BTC, USD)
-  amount_asset: number; // The amount of the original asset
-  amount_usd_equivalent: number; // The value by which the USDT wallet balance changed
+  
+  // Details of the original external transaction
+  asset_code: CurrencyCode;         // The original asset (e.g., BTC, ETH, USD)
+  amount_asset: number;             // The amount of the original asset
+  
+  // Value of the adjustment in the main wallet's currency (USDT)
+  amount_usd_equivalent: number;    // The value by which the USDT wallet balance changed (can be +/-)
+  
   status: TransactionStatus; // Will be 'COMPLETED' for adjustments
   external_transaction_id?: string | null; // Admin can add this if relevant
   notes?: string | null; // Admin notes for the adjustment
@@ -76,10 +81,17 @@ export interface Metric {
   icon?: React.ElementType;
 }
 
-// Helper type for the balance adjustment form
+// Helper type for the simplified balance adjustment form
 export type BalanceAdjustmentFormData = {
   originalAssetCode: CurrencyCode;
   originalAssetAmount: number;
-  adjustmentAmountForWallet: number; // This is the +/- value for the main USDT wallet
+  // adjustmentAmountForWallet is now calculated, so removed from form data
   adminNotes: string;
 };
+
+// Type for data passed to the server action
+export interface AdjustBalanceServerActionData extends BalanceAdjustmentFormData {
+  userId: string;
+  // adminPin: string; // We'll handle PIN on client for now, or pass it if server validation is desired later
+}
+
