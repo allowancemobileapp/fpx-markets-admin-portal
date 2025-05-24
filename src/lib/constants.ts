@@ -14,7 +14,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   {
     title: 'Dashboard',
-    href: '/',
+    href: '/dashboard', // Updated path
     icon: LayoutDashboard,
     description: 'Overview of platform metrics.',
   },
