@@ -1,16 +1,13 @@
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { PlaceholderChart } from '@/components/dashboard/placeholder-chart';
 import type { Metric } from '@/lib/types';
-import { Users, UserPlus, Clock, Activity, Briefcase } from 'lucide-react'; // Removed ShieldAlert
+import { Users, UserPlus } from 'lucide-react'; // Removed Clock, Activity, Briefcase
 
 export default function DashboardPage() {
   const metrics: Metric[] = [
     { title: 'Total Platform Users', value: '1,234', icon: Users, change: '+2.5%' },
     { title: 'New Users (24h)', value: '12', icon: UserPlus, change: '+5' },
-    // { title: 'Pending KYC Verifications', value: '5', icon: ShieldAlert }, // Removed KYC Metric
-    { title: 'Pending Transactions', value: '8', icon: Clock, change: '-1' }, // This might relate to deposits/withdrawals needing admin action or just general pending states.
-    { title: 'Active Trades', value: '567', icon: Activity }, // Kept, but might be less relevant if focus is only balance.
-    { title: 'Active Strategy Providers', value: '23', icon: Briefcase, change: '+1' }, // Kept, but might be less relevant.
+    // Removed Pending Transactions, Active Trades, Active Strategy Providers metrics
   ];
 
   return (
@@ -25,8 +22,8 @@ export default function DashboardPage() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <PlaceholderChart title="User Growth Over Time" description="Shows new user registrations monthly." />
-        <PlaceholderChart title="Transaction Volume" description="Daily transaction volume in USD." />
-        <PlaceholderChart title="Trading Activity" description="Number of trades opened per day." />
+        <PlaceholderChart title="Platform Activity Overview" description="General platform activity metrics." />
+        <PlaceholderChart title="User Engagement" description="Daily active users or similar." />
       </div>
     </div>
   );

@@ -9,12 +9,12 @@ import { sendEmail } from '@/services/emailService';
 
 // Mock database state management
 let mockWalletsDB = (await import('@/lib/mock-data')).mockWallets;
-let mockTransactionsDB = (await import('@/lib/mock-data')).mockTransactions;
+let mockTransactionsDB = (await import('@/lib/mock-data')).mockTransactions; // Still used for logging adjustments
 const mockUsersDB = (await import('@/lib/mock-data')).mockUsers; // To get user email
 
 const SetBalanceSchema = z.object({
   walletId: z.string().uuid(),
-  newBalance: z.coerce.number().min(0, "Balance cannot be negative."), // Assuming balance cannot be negative
+  newBalance: z.coerce.number().min(0, "Balance cannot be negative."),
   adminNotes: z.string().min(1, "Admin notes are required for balance adjustments."),
   adminId: z.string().optional().default("SYSTEM_ADMIN"), // Placeholder for actual admin ID
 });
@@ -24,7 +24,9 @@ export async function setWalletBalance(
 ): Promise<{ success: boolean; message: string; wallet?: Wallet }> {
   const validatedFields = SetBalanceSchema.safeParse(data);
   if (!validatedFields.success) {
-    return { success: false, message: "Validation failed: " + validatedFields.error.flatten().fieldErrors };
+    const errorMessages = validatedFields.error.flatten().fieldErrors;
+    const fullMessage = Object.entries(errorMessages).map(([field, errors]) => `${field}: ${errors?.join(', ')}`).join('; ');
+    return { success: false, message: "Validation failed: " + fullMessage };
   }
 
   const { walletId, newBalance, adminNotes, adminId } = validatedFields.data;
@@ -34,16 +36,34 @@ export async function setWalletBalance(
     return { success: false, message: 'Wallet not found.' };
   }
 
-  const originalWallet = mockWalletsDB[walletIndex];
-  const adjustmentAmount = newBalance - originalWallet.balance;
+  const originalWallet = { ...mockWalletsDB[walletIndex] }; // Clone for accurate old balance
+  const oldBalance = originalWallet.balance;
+  const adjustmentAmount = newBalance - oldBalance;
 
-  // Update wallet balance
-  mockWalletsDB[walletIndex] = {
-    ...originalWallet,
+  const updatedWalletData: Partial<Wallet> = {
     balance: newBalance,
     updated_at: new Date().toISOString(),
   };
-  const updatedWallet = mockWalletsDB[walletIndex];
+
+  // Adjust pending balances based on the main balance change
+  if (newBalance > oldBalance && originalWallet.pending_deposit_balance > 0) {
+    // Balance increased, assume it's from pending deposits
+    const amountIncreased = newBalance - oldBalance;
+    updatedWalletData.pending_deposit_balance = Math.max(0, originalWallet.pending_deposit_balance - amountIncreased);
+  } else if (newBalance < oldBalance && originalWallet.pending_withdrawal_balance > 0) {
+    // Balance decreased, assume it's fulfilling pending withdrawals
+    const amountDecreased = oldBalance - newBalance;
+    updatedWalletData.pending_withdrawal_balance = Math.max(0, originalWallet.pending_withdrawal_balance - amountDecreased);
+  }
+
+
+  // Update wallet in mock DB
+  mockWalletsDB[walletIndex] = {
+    ...originalWallet,
+    ...updatedWalletData,
+  };
+  const finalUpdatedWallet = mockWalletsDB[walletIndex];
+
 
   // Create an ADJUSTMENT transaction for auditing
   const adjustmentTransaction: Transaction = {
@@ -52,34 +72,32 @@ export async function setWalletBalance(
     wallet_id: originalWallet.id,
     transaction_type: 'ADJUSTMENT',
     asset_code: originalWallet.currency,
-    amount_asset: adjustmentAmount,
-    // For simplicity, USD equivalent is same as asset amount if currency is USD, otherwise needs conversion.
-    // Here, we'll use adjustmentAmount directly assuming it's in the wallet's currency.
-    // A more robust solution would convert to a common currency like USD if asset_code !== 'USD'.
-    amount_usd_equivalent: adjustmentAmount, // Simplified: This might need actual currency conversion logic
-    status: 'COMPLETED',
+    amount_asset: adjustmentAmount, // This is the change in balance
+    amount_usd_equivalent: adjustmentAmount, // Simplified for non-USD, assuming direct value or needs conversion logic if currency != USD
+    status: 'COMPLETED', // Adjustments are typically immediate
     notes: `Admin Adjustment: ${adminNotes}`,
-    admin_processed_by: adminId,
+    admin_processed_by: adminId, // In a real app, actual admin ID
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     processed_at: new Date().toISOString(),
   };
   mockTransactionsDB.push(adjustmentTransaction);
 
-  console.log(`Admin action: Adjusted balance for wallet ${walletId}. New balance: ${newBalance}. Reason: ${adminNotes}`);
-
+  console.log(`Admin action: Adjusted balance for wallet ${walletId}. Old: ${oldBalance}, New: ${newBalance}. Reason: ${adminNotes}. Pending Deposits: ${originalWallet.pending_deposit_balance} -> ${finalUpdatedWallet.pending_deposit_balance}, Pending Withdrawals: ${originalWallet.pending_withdrawal_balance} -> ${finalUpdatedWallet.pending_withdrawal_balance}`);
+  
   // Send email notification
   const user = mockUsersDB.find(u => u.id === originalWallet.user_id);
   if (user && user.email) {
     await sendEmail({
       to: user.email,
-      subject: `Your ${originalWallet.currency} Wallet Balance Updated`,
-      body: `Dear ${user.username || 'User'},\n\nAn administrator has updated your ${originalWallet.currency} wallet balance.\n\nOld Balance: ${originalWallet.balance.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nNew Balance: ${newBalance.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nAdjustment Amount: ${adjustmentAmount.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nReason: ${adminNotes}\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
+      subject: `Your ${originalWallet.currency} Wallet Balance Updated by Admin`,
+      body: `Dear ${user.username || 'User'},\n\nAn administrator has updated your ${originalWallet.currency} wallet balance.\n\nOld Balance: ${oldBalance.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nNew Balance: ${newBalance.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nAdjustment Amount: ${adjustmentAmount.toFixed(originalWallet.currency === 'USD' ? 2 : 8)}\nReason: ${adminNotes}\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
     });
   }
 
   revalidatePath(`/users/${originalWallet.user_id}`);
-  revalidatePath('/transactions'); // Also revalidate transactions due to the new adjustment transaction
+  // No longer revalidating '/transactions' page as it's removed.
+  // Adjustment transactions are still logged but not viewed through a dedicated page.
   
-  return { success: true, message: 'Wallet balance updated successfully and adjustment logged.', wallet: updatedWallet };
+  return { success: true, message: 'Wallet balance updated successfully and adjustment logged.', wallet: finalUpdatedWallet };
 }

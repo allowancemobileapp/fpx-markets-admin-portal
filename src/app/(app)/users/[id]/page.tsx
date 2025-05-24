@@ -1,5 +1,5 @@
 import { findUserById } from '@/actions/userActions';
-import { mockWallets, mockTransactions, mockTradingPlans } from '@/lib/mock-data'; // Assuming these exist
+import { mockWallets, mockTradingPlans } from '@/lib/mock-data'; // mockTransactions removed
 import { UserProfileTabs } from '@/components/users/user-profile-tabs';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -34,7 +34,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
 
   // Fetch related data for the user (mocked for now)
   const wallets = mockWallets.filter(w => w.user_id === user.id);
-  const transactions = mockTransactions.filter(t => t.user_id === user.id).slice(0, 10); // Show recent 10
+  // Transactions are no longer passed to UserProfileTabs directly
   const tradingPlan = mockTradingPlans.find(tp => tp.id === user.trading_plan_id);
 
   return (
@@ -76,7 +76,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
         </div>
 
         <div className="lg:col-span-2">
-           <UserProfileTabs user={user} wallets={wallets} transactions={transactions} />
+           <UserProfileTabs user={user} wallets={wallets} /> {/* transactions prop removed */}
         </div>
       </div>
     </div>
