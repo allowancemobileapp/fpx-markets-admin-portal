@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'; // Keep Label import for direct u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userActions';
+import { updateUserTradingPlan, toggleUserActiveStatus, getAllTradingPlans } from '@/actions/userActions';
 import { adjustUserWalletBalance, adjustUserProfitLossBalance } from '@/actions/walletActions';
 import { useState, useTransition, useEffect } from 'react';
 import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building } from 'lucide-react';
@@ -54,7 +54,7 @@ interface UserProfileTabsProps {
 }
 
 const availableAssetCodes: CurrencyCode[] = ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'];
-const MOCK_ADMIN_PIN = "1234"; 
+const MOCK_ADMIN_PIN = "0000"; // Updated PIN
 
 export function UserProfileTabs({ user: initialUser, wallet: initialWallet, tradingPlans }: UserProfileTabsProps) {
   const { toast } = useToast();
@@ -515,3 +515,5 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     </>
   );
 }
+
+    
