@@ -1,4 +1,3 @@
-import { config } from 'dotenv';
-config();
-
-// import '@/ai/flows/summarize-user-sentiment.ts'; // Removed as flow is deleted
+// This Genkit flow has been removed as the sentiment analyzer feature
+// was removed from the application. This file can be deleted.
+export {};

@@ -1,4 +1,8 @@
-import { config } from 'dotenv';
-config();
+// This page is no longer used as instrument management has been removed.
+// It can be deleted.
+import { redirect } from 'next/navigation';
 
-// import '@/ai/flows/summarize-user-sentiment.ts'; // Removed as flow is deleted
+export default function InstrumentsPagePlaceholder() {
+  redirect('/dashboard'); // Or to a 404 page
+  return null;
+}

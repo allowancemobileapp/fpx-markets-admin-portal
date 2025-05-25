@@ -4,9 +4,8 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Eye, Edit3, CheckCircle, XCircle, MoreVertical, Search, Filter, UserX, UserCheck } from 'lucide-react'; // Removed Trash2, Clock
-import type { User } from '@/lib/types'; // Removed TradingPlan, KycStatus
-import { mockTradingPlans } from '@/lib/mock-data';
+import { Eye, Edit3, CheckCircle, XCircle, MoreVertical, Search, Filter, UserX, UserCheck, KeyRound, Fingerprint } from 'lucide-react';
+import type { User, TradingPlan } from '@/lib/types'; 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,21 +26,25 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { format } from 'date-fns';
+import { FormattedDateCell } from '@/components/shared/formatted-date-cell';
 import { toggleUserActiveStatus } from '@/actions/userActions';
 import { useToast } from '@/hooks/use-toast';
 
 interface UserTableClientProps {
   initialUsers: User[];
+  tradingPlans: TradingPlan[]; // Pass trading plans as a prop
 }
 
-export function UserTableClient({ initialUsers }: UserTableClientProps) {
+export function UserTableClient({ initialUsers, tradingPlans }: UserTableClientProps) {
   const [users, setUsers] = React.useState<User[]>(initialUsers);
   const [searchTerm, setSearchTerm] = React.useState('');
-  // KycStatusFilter removed
   const [isActiveFilter, setIsActiveFilter] = React.useState<'all' | 'true' | 'false'>('all');
   const [tradingPlanFilter, setTradingPlanFilter] = React.useState<string>('all');
   const { toast } = useToast();
+
+  React.useEffect(() => {
+    setUsers(initialUsers);
+  }, [initialUsers]);
 
   const handleToggleActive = async (userId: string, currentStatus: boolean) => {
     const result = await toggleUserActiveStatus(userId, !currentStatus);
@@ -59,16 +62,12 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
                             user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             (user.first_name && user.first_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
                             (user.last_name && user.last_name.toLowerCase().includes(searchTerm.toLowerCase()));
-      // matchesKyc removed
       const matchesActive = isActiveFilter === 'all' || user.is_active.toString() === isActiveFilter;
       const matchesPlan = tradingPlanFilter === 'all' || user.trading_plan_id.toString() === tradingPlanFilter;
-      return matchesSearch && matchesActive && matchesPlan; // Removed matchesKyc
+      return matchesSearch && matchesActive && matchesPlan;
     });
-  }, [users, searchTerm, isActiveFilter, tradingPlanFilter]); // Removed kycStatusFilter
-
-  // getKycStatusBadge function removed
+  }, [users, searchTerm, isActiveFilter, tradingPlanFilter]);
   
-  // kycStatuses array removed
 
   return (
     <Card className="shadow-lg">
@@ -85,7 +84,6 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
             />
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
-            {/* KYC Status Filter Select removed */}
             <Select value={isActiveFilter} onValueChange={(value) => setIsActiveFilter(value as 'all' | 'true' | 'false')}>
               <SelectTrigger className="w-full sm:w-[150px]">
                 <Filter className="h-4 w-4 mr-2" />
@@ -104,7 +102,7 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Plans</SelectItem>
-                {mockTradingPlans.map(plan => (
+                {tradingPlans.map(plan => (
                   <SelectItem key={plan.id} value={plan.id.toString()}>{plan.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -118,7 +116,6 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
               <TableRow>
                 <TableHead>Username</TableHead>
                 <TableHead>Email</TableHead>
-                {/* <TableHead>KYC Status</TableHead> Removed */}
                 <TableHead>Active</TableHead>
                 <TableHead>Trading Plan</TableHead>
                 <TableHead>Joined</TableHead>
@@ -135,14 +132,13 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
                     <p className="text-xs text-muted-foreground">{user.first_name} {user.last_name}</p>
                   </TableCell>
                   <TableCell>{user.email}</TableCell>
-                  {/* KYC Status Cell removed */}
                   <TableCell>
                     {user.is_active ? 
-                      <CheckCircle className="h-5 w-5 text-green-500" /> : 
-                      <XCircle className="h-5 w-5 text-red-500" />}
+                      <Badge variant="default" className="bg-green-500 hover:bg-green-600">Active</Badge> : 
+                      <Badge variant="destructive">Inactive</Badge>}
                   </TableCell>
-                  <TableCell>{mockTradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</TableCell>
-                  <TableCell>{format(new Date(user.created_at), 'MMM dd, yyyy')}</TableCell>
+                  <TableCell>{tradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</TableCell>
+                  <TableCell><FormattedDateCell dateString={user.created_at} dateFormat="MMM dd, yyyy" /></TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -153,30 +149,21 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
-                          <Link href={`/users/${user.id}`} className="flex items-center">
+                          <Link href={`/users/${user.id}`} className="flex items-center cursor-pointer">
                             <Eye className="mr-2 h-4 w-4" /> View Profile
                           </Link>
                         </DropdownMenuItem>
-                        {/* Edit User Item - can be uncommented if basic edit page is added later */}
-                        {/* <DropdownMenuItem onClick={() => alert('Edit user: Not implemented yet.')} className="flex items-center">
-                           <Edit3 className="mr-2 h-4 w-4" /> Edit User
-                        </DropdownMenuItem> */}
-                        <DropdownMenuItem onClick={() => handleToggleActive(user.id, user.is_active)} className="flex items-center">
+                        <DropdownMenuItem onClick={() => handleToggleActive(user.id, user.is_active)} className="flex items-center cursor-pointer">
                           {user.is_active ? <UserX className="mr-2 h-4 w-4 text-red-500" /> : <UserCheck className="mr-2 h-4 w-4 text-green-500" />}
                           {user.is_active ? 'Block User' : 'Unblock User'}
                         </DropdownMenuItem>
-                        {/* Delete User Item - can be uncommented if delete functionality is added later */}
-                        {/* <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => alert('Delete user: Not implemented yet.')} className="text-red-600 flex items-center">
-                          <Trash2 className="mr-2 h-4 w-4" /> Delete User
-                        </DropdownMenuItem> */}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
               )) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-24"> {/* Adjusted colSpan */}
+                  <TableCell colSpan={6} className="text-center h-24"> 
                     No users found.
                   </TableCell>
                 </TableRow>
@@ -186,9 +173,10 @@ export function UserTableClient({ initialUsers }: UserTableClientProps) {
         </div>
         <div className="p-4 border-t flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Showing {filteredUsers.length} of {users.length} users.</p>
+            {/* Basic Pagination (can be improved later) */}
             <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled>Previous</Button>
-                <Button variant="outline" size="sm" disabled>Next</Button>
+                <Button variant="outline" size="sm" disabled={true /* Add logic for prevPageDisabled */}>Previous</Button>
+                <Button variant="outline" size="sm" disabled={true /* Add logic for nextPageDisabled */}>Next</Button>
             </div>
         </div>
       </CardContent>

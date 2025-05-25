@@ -1,5 +1,5 @@
-import { findUserById } from '@/actions/userActions';
-import { mockWallets, mockTradingPlans } from '@/lib/mock-data';
+import { findUserById, getAllTradingPlans } from '@/actions/userActions';
+import { getWalletByUserId } from '@/actions/walletActions'; // Use new function
 import { UserProfileTabs } from '@/components/users/user-profile-tabs';
 import { PageHeader } from '@/components/shared/page-header';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function UserProfilePage({ params }: { params: { id: string } }) {
   const user = await findUserById(params.id);
-
+  
   if (!user) {
     return (
       <div className="space-y-6">
@@ -32,12 +32,10 @@ export default async function UserProfilePage({ params }: { params: { id: string
     );
   }
 
-  // Fetch the single wallet for the user
-  const wallet = mockWallets.find(w => w.user_id === user.id);
+  const wallet = await getWalletByUserId(user.id); // Fetch wallet from DB
+  const tradingPlans = await getAllTradingPlans(); // Fetch all trading plans
   
   if (!wallet) {
-    // This case should ideally not happen if every user is guaranteed a wallet.
-    // Handle appropriately, maybe create a default wallet or show an error.
      return (
       <div className="space-y-6">
         <PageHeader title="User Wallet Not Found" icon={UserIcon} />
@@ -45,7 +43,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
           <Terminal className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>
-            Wallet for user "{user.username}" (ID: {params.id}) could not be found.
+            Wallet for user "{user.username}" (ID: {params.id}) could not be found. This might indicate an incomplete user setup. A wallet should be created automatically for each user.
           </AlertDescription>
         </Alert>
          <Button asChild variant="outline">
@@ -55,7 +53,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
     );
   }
 
-  const tradingPlan = mockTradingPlans.find(tp => tp.id === user.trading_plan_id);
+  const tradingPlan = tradingPlans.find(tp => tp.id === user.trading_plan_id);
 
   return (
     <div className="space-y-6">
@@ -81,11 +79,17 @@ export default async function UserProfilePage({ params }: { params: { id: string
                     <h2 className="text-2xl font-semibold">{user.first_name} {user.last_name}</h2>
                     <p className="text-muted-foreground">@{user.username}</p>
                     <p className="text-sm text-muted-foreground mt-1">{user.email}</p>
-                    <Badge variant={user.is_active ? "default" : "destructive"} className={`mt-2 ${user.is_active ? 'bg-green-500' : ''}`}>
+                     <Badge variant={user.is_active ? "default" : "destructive"} className="mt-2">
                         {user.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                 </div>
                 <div className="mt-6 space-y-2 text-sm">
+                    <div><strong>Password:</strong> <span className="text-muted-foreground">Managed by Firebase Auth</span></div>
+                    <div><strong>PIN Setup:</strong> 
+                        {user.pin_setup_completed_at ? 
+                            <><span className="text-green-600 font-medium">Completed</span> (<span className="text-muted-foreground text-xs">{new Date(user.pin_setup_completed_at).toLocaleDateString()}</span>)</> : 
+                            <span className="text-orange-500 font-medium">Not Yet Setup</span>}
+                    </div>
                     <p><strong>Country:</strong> {user.country_code || 'N/A'}</p>
                     <p><strong>Phone:</strong> {user.phone_number || 'N/A'}</p>
                     <p><strong>Trading Plan:</strong> {tradingPlan?.name || 'N/A'}</p>
@@ -96,7 +100,7 @@ export default async function UserProfilePage({ params }: { params: { id: string
         </div>
 
         <div className="lg:col-span-2">
-           <UserProfileTabs user={user} wallet={wallet} />
+           <UserProfileTabs user={user} wallet={wallet} tradingPlans={tradingPlans} />
         </div>
       </div>
     </div>

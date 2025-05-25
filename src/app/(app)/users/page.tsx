@@ -1,15 +1,15 @@
 import { Users as UsersIcon } from 'lucide-react';
-import { mockUsers } from '@/lib/mock-data';
 import { PageHeader } from '@/components/shared/page-header';
 import { UserTableClient } from '@/components/users/user-table-client';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { getAllUsers, getAllTradingPlans } from '@/actions/userActions';
 
-export const dynamic = 'force-dynamic'; // Or 'auto' if data doesn't change frequently
+export const dynamic = 'force-dynamic';
 
 export default async function UsersPage() {
-  // In a real app, fetch users from your database/API
-  const users = mockUsers;
+  const users = await getAllUsers();
+  const tradingPlans = await getAllTradingPlans(); // Fetch trading plans
 
   return (
     <div className="space-y-6">
@@ -17,13 +17,14 @@ export default async function UsersPage() {
         title="User Management"
         description="View and manage all platform users."
         icon={UsersIcon}
-        actions={
-          <Button asChild>
-            <Link href="/users/new">Add New User</Link>
-          </Button>
-        }
+        // Add New User button can be re-enabled if functionality is added
+        // actions={ 
+        //   <Button asChild>
+        //     <Link href="/users/new">Add New User</Link>
+        //   </Button>
+        // }
       />
-      <UserTableClient initialUsers={users} />
+      <UserTableClient initialUsers={users} tradingPlans={tradingPlans} />
     </div>
   );
 }

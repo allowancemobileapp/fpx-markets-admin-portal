@@ -1,13 +1,34 @@
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { PlaceholderChart } from '@/components/dashboard/placeholder-chart';
 import type { Metric } from '@/lib/types';
-import { Users, UserPlus } from 'lucide-react'; // Removed Clock, Activity, Briefcase
+import { Users, UserPlus } from 'lucide-react';
+import { query } from '@/lib/db';
 
-export default function DashboardPage() {
+async function getDashboardMetrics() {
+  try {
+    const totalUsersRes = await query('SELECT COUNT(*) FROM users');
+    const newUsersRes = await query("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '24 HOURS'");
+    
+    return {
+      totalUsers: totalUsersRes.rows[0].count || '0',
+      newUsersToday: newUsersRes.rows[0].count || '0',
+    };
+  } catch (error) {
+    console.error("Error fetching dashboard metrics:", error);
+    return {
+      totalUsers: 'N/A',
+      newUsersToday: 'N/A',
+    };
+  }
+}
+
+
+export default async function DashboardPage() {
+  const dbMetrics = await getDashboardMetrics();
+
   const metrics: Metric[] = [
-    { title: 'Total Platform Users', value: '1,234', icon: Users, change: '+2.5%' },
-    { title: 'New Users (24h)', value: '12', icon: UserPlus, change: '+5' },
-    // Removed Pending Transactions, Active Trades, Active Strategy Providers metrics
+    { title: 'Total Platform Users', value: dbMetrics.totalUsers, icon: Users },
+    { title: 'New Users (24h)', value: dbMetrics.newUsersToday, icon: UserPlus },
   ];
 
   return (

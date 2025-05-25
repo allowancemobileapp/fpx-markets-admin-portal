@@ -1,20 +1,19 @@
 
 'use client';
 
-import type { User, Wallet, CurrencyCode, AdjustBalanceServerActionData, AdjustPandLServerActionData } from '@/lib/types';
-import { mockTradingPlans } from '@/lib/mock-data';
+import type { User, Wallet, CurrencyCode, AdjustBalanceServerActionData, AdjustPandLServerActionData, TradingPlan } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Label } from '@/components/ui/label'; // Keep Label import for direct use if any
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userActions';
 import { adjustUserWalletBalance, adjustUserProfitLossBalance } from '@/actions/walletActions';
 import { useState, useTransition, useEffect } from 'react';
-import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown } from 'lucide-react';
+import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -27,7 +26,7 @@ import {
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form'; // Ensure all form components are imported
 
 // Schema for main balance adjustment (external asset conversion)
 const AdjustBalanceFormSchema = z.object({
@@ -42,7 +41,7 @@ type AdjustBalanceFormData = z.infer<typeof AdjustBalanceFormSchema>;
 
 // Schema for P&L balance adjustment
 const AdjustPandLFormSchema = z.object({
-  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), // Allow positive or negative, but not zero
+  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), 
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long (e.g., reason for P&L change)."),
 });
 type AdjustPandLFormData = z.infer<typeof AdjustPandLFormSchema>;
@@ -51,12 +50,13 @@ type AdjustPandLFormData = z.infer<typeof AdjustPandLFormSchema>;
 interface UserProfileTabsProps {
   user: User;
   wallet: Wallet;
+  tradingPlans: TradingPlan[]; // Pass trading plans
 }
 
 const availableAssetCodes: CurrencyCode[] = ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'];
-const MOCK_ADMIN_PIN = "1234"; // For demo purposes
+const MOCK_ADMIN_PIN = "1234"; 
 
-export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: UserProfileTabsProps) {
+export function UserProfileTabs({ user: initialUser, wallet: initialWallet, tradingPlans }: UserProfileTabsProps) {
   const { toast } = useToast();
   const [isProcessing, startTransition] = useTransition();
   
@@ -102,8 +102,16 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
   }, [initialUser, initialWallet]);
 
   useEffect(() => {
-    if (wallet?.updated_at) {
-      setFormattedWalletUpdatedAt(new Date(wallet.updated_at).toLocaleString());
+    // Client-side date formatting to avoid hydration errors
+    if (typeof window !== 'undefined' && wallet?.updated_at) {
+      try {
+        setFormattedWalletUpdatedAt(new Date(wallet.updated_at).toLocaleString());
+      } catch (e) {
+        console.error("Failed to format wallet updated_at date:", e);
+        setFormattedWalletUpdatedAt("Invalid Date");
+      }
+    } else if (!wallet?.updated_at) {
+        setFormattedWalletUpdatedAt("N/A");
     }
   }, [wallet?.updated_at]);
 
@@ -145,7 +153,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
   const onMainBalanceFormSubmit = (data: AdjustBalanceFormData) => {
     setMainBalanceDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('mainBalance');
-    setIsAdjustBalanceDialogOpen(false); // Close main balance dialog
+    setIsAdjustBalanceDialogOpen(false); 
     setIsPinDialogOpen(true);
     setEnteredPin('');
     setPinError('');
@@ -154,7 +162,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
   const onPandLFormSubmit = (data: AdjustPandLFormData) => {
     setPandlDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('pandlBalance');
-    setIsAdjustPandLDialogOpen(false); // Close P&L dialog
+    setIsAdjustPandLDialogOpen(false); 
     setIsPinDialogOpen(true);
     setEnteredPin('');
     setPinError('');
@@ -169,7 +177,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
         startTransition(async () => {
           const result = await adjustUserWalletBalance(mainBalanceDataToSubmit);
           if (result.success && result.wallet) {
-            setWallet(result.wallet);
+            setWallet(result.wallet); // Update local wallet state
             toast({ title: "Success", description: result.message });
           } else {
             toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -180,7 +188,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
         startTransition(async () => {
           const result = await adjustUserProfitLossBalance(pandlDataToSubmit);
            if (result.success && result.wallet) {
-            setWallet(result.wallet);
+            setWallet(result.wallet); // Update local wallet state
             toast({ title: "Success", description: result.message });
           } else {
             toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -207,7 +215,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
 
   return (
     <>
-      <Tabs defaultValue="wallet" className="w-full">
+      <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="wallet">Wallet</TabsTrigger>
@@ -220,13 +228,32 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
               <CardTitle>User Overview</CardTitle>
               <CardDescription>Key details about the user.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div><strong>Firebase UID:</strong> <span className="text-muted-foreground">{user.firebase_auth_uid}</span></div>
-                <div><strong>Email Verified:</strong> {user.is_email_verified ? <span className="text-green-600">Yes</span> : <span className="text-red-600">No</span>}</div>
-                <div><strong>Profile Completed:</strong> {user.profile_completed_at ? new Date(user.profile_completed_at).toLocaleDateString() : 'No'}</div>
-                <div><strong>PIN Setup Completed:</strong> {user.pin_setup_completed_at ? new Date(user.pin_setup_completed_at).toLocaleDateString() : 'No'}</div>
-                <div><strong>Current Trading Plan:</strong> {mockTradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</div>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                <div className="flex items-center">
+                    <Building className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <strong>Firebase UID:</strong> <span className="ml-1 text-muted-foreground truncate" title={user.firebase_auth_uid}>{user.firebase_auth_uid}</span>
+                </div>
+                <div><strong>Email Verified:</strong> {user.is_email_verified ? <span className="text-green-600 font-medium">Yes</span> : <span className="text-red-600 font-medium">No</span>}</div>
+                
+                <div><strong>Profile Completed:</strong> {user.profile_completed_at ? 
+                    <><span className="text-green-600 font-medium">Yes</span> (<span className="text-muted-foreground text-xs">{new Date(user.profile_completed_at).toLocaleDateString()}</span>)</> : 
+                    <span className="text-orange-500 font-medium">No</span>}
+                </div>
+                
+                <div className="flex items-center">
+                    <KeyRound className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <strong>Password:</strong> <span className="ml-1 text-muted-foreground">Managed by Firebase Auth</span>
+                </div>
+                <div className="flex items-center">
+                    <Fingerprint className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <strong>PIN Setup:</strong> 
+                    {user.pin_setup_completed_at ? 
+                        <><span className="ml-1 text-green-600 font-medium">Completed</span> (<span className="text-muted-foreground text-xs">{new Date(user.pin_setup_completed_at).toLocaleDateString()}</span>)</> : 
+                        <span className="ml-1 text-orange-500 font-medium">Not Yet Setup</span>}
+                </div>
+
+                <div><strong>Current Trading Plan:</strong> <span className="text-muted-foreground">{tradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</span></div>
                 <div><strong>Account Status:</strong> <span className={`font-semibold ${user.is_active ? 'text-green-600' : 'text-red-600'}`}>{user.is_active ? 'Active' : 'Blocked/Inactive'}</span></div>
               </div>
             </CardContent>
@@ -244,9 +271,9 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                 <div className="text-3xl font-bold text-primary mb-1">
                   {wallet.balance.toFixed(2)} <span className="text-xl text-muted-foreground">{wallet.currency}</span>
                 </div>
-                <CardDescription className="text-xs mb-3">User's main available funds. Updated by admin for confirmed external transactions.</CardDescription>
+                <CardDescription className="text-xs mb-3">User's main available funds. Use 'Adjust Balance' for confirmed external transactions.</CardDescription>
                 <Button onClick={openAdjustBalanceDialog} variant="outline" size="sm">
-                  <Edit3 className="mr-2 h-4 w-4" /> Adjust Main Balance
+                  <Edit3 className="mr-2 h-4 w-4" /> Adjust Balance
                 </Button>
               </CardContent>
             </Card>
@@ -260,7 +287,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                 <div className={`text-3xl font-bold mb-1 ${wallet.profit_loss_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {wallet.profit_loss_balance.toFixed(2)} <span className="text-xl text-muted-foreground">{wallet.currency}</span>
                 </div>
-                <CardDescription className="text-xs mb-3">User's realized profit or loss. Can be adjusted by admin.</CardDescription>
+                <CardDescription className="text-xs mb-3">User's realized profit or loss. Adjusted by admin for specific cases like bonuses or corrections.</CardDescription>
                 <Button onClick={openAdjustPandLDialog} variant="outline" size="sm">
                   <Edit3 className="mr-2 h-4 w-4" /> Adjust P&L Balance
                 </Button>
@@ -298,17 +325,18 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
             <Card>
               <CardHeader>
                 <CardTitle>Change Trading Plan</CardTitle>
+                 <CardDescription>Current Plan: {tradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="tradingPlan">Trading Plan</Label>
+                  <Label htmlFor="tradingPlanSelect">New Trading Plan</Label>
                   <Select value={selectedTradingPlanId.toString()} onValueChange={(value) => setSelectedTradingPlanId(Number(value))}>
-                      <SelectTrigger id="tradingPlan">
+                      <SelectTrigger id="tradingPlanSelect">
                           <SelectValue placeholder="Select new trading plan" />
                       </SelectTrigger>
                       <SelectContent>
-                          {mockTradingPlans.map(plan => (
-                              <SelectItem key={plan.id} value={plan.id.toString()}>{plan.name} (Min: ${plan.minimum_deposit_usd})</SelectItem>
+                          {tradingPlans.map(plan => (
+                              <SelectItem key={plan.id} value={plan.id.toString()}>{plan.name} (Min: ${plan.minimum_deposit_usd.toFixed(2)})</SelectItem>
                           ))}
                       </SelectContent>
                   </Select>
@@ -316,6 +344,9 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
                 <Button onClick={handleTradingPlanUpdate} disabled={isProcessing || selectedTradingPlanId === user.trading_plan_id}>
                   {isProcessing ? 'Updating...' : 'Change Trading Plan'}
                 </Button>
+                 <p className="text-sm text-muted-foreground mt-2">
+                  Changing the trading plan might affect commissions, leverage, and other trading conditions. An email notification will be sent.
+                </p>
               </CardContent>
             </Card>
           </div>
@@ -444,7 +475,6 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
         </AlertDialogContent>
       </AlertDialog>
 
-
       {/* Admin PIN Dialog (Common for all adjustments) */}
       <AlertDialog open={isPinDialogOpen} onOpenChange={handlePinDialogClose}>
         <AlertDialogContent className="sm:max-w-xs">
@@ -463,7 +493,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
               placeholder="Enter 4-digit PIN"
               value={enteredPin}
               onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, ''); // Allow only digits
+                const val = e.target.value.replace(/\D/g, ''); 
                 if (val.length <= 4) {
                   setEnteredPin(val);
                 }
@@ -485,4 +515,3 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet }: Us
     </>
   );
 }
-
