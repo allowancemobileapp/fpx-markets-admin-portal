@@ -3,7 +3,7 @@
 'use client';
 
 import * as React from 'react';
-import { Eye, Search, Filter, MessageSquare } from 'lucide-react'; 
+import { Eye, Search, Filter, MessageSquare, Briefcase } from 'lucide-react';
 import type { Transaction, TransactionStatus, TransactionType, CurrencyCode } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,9 +19,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-// import { format } from 'date-fns'; // No longer directly used here for created_at
 import { FormattedDateCell } from '@/components/shared/formatted-date-cell';
-
+import { getTransactionsLog } from '@/actions/walletActions'; // Import the server action
 
 import Link from 'next/link';
 
@@ -33,18 +32,56 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
   const [transactions, setTransactions] = React.useState<Transaction[]>(initialTransactions);
   const [searchTerm, setSearchTerm] = React.useState('');
   const [statusFilter, setStatusFilter] = React.useState<TransactionStatus | 'all'>('all');
-  const [typeFilter, setTypeFilter] = React.useState<TransactionType | 'all'>('all'); 
+  const [typeFilter, setTypeFilter] = React.useState<TransactionType | 'all'>('all');
   const [assetFilter, setAssetFilter] = React.useState<CurrencyCode | 'all'>('all');
-  
+  const [isLoading, setIsLoading] = React.useState(false);
 
   React.useEffect(() => {
     setTransactions(initialTransactions);
   },[initialTransactions]);
 
+  const fetchFilteredTransactions = async () => {
+    setIsLoading(true);
+    try {
+      const fetchedTransactions = await getTransactionsLog({
+        searchTerm: searchTerm || undefined,
+        statusFilter: statusFilter === 'all' ? undefined : statusFilter,
+        typeFilter: typeFilter === 'all' ? undefined : typeFilter,
+        assetFilter: assetFilter === 'all' ? undefined : assetFilter,
+        // Add limit/offset if implementing pagination
+      });
+      setTransactions(fetchedTransactions);
+    } catch (error) {
+      console.error("Failed to fetch transactions:", error);
+      // Optionally, show a toast message here
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Fetch on initial load or when filters change
+  // Debounce search term or use a search button to avoid too many requests
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+        // Only fetch if a filter has actually been applied or search term exists
+        if (searchTerm || statusFilter !== 'all' || typeFilter !== 'all' || assetFilter !== 'all') {
+           // fetchFilteredTransactions(); // Keep this if you want live filtering from DB
+        } else if (!searchTerm && statusFilter === 'all' && typeFilter === 'all' && assetFilter === 'all') {
+            // Reset to initial if all filters are cleared (client-side)
+            // setTransactions(initialTransactions); // Or re-fetch all
+        }
+    }, 500); // Debounce for 500ms
 
-  const filteredTransactions = React.useMemo(() => {
+    return () => {
+        clearTimeout(handler);
+    };
+  }, [searchTerm, statusFilter, typeFilter, assetFilter]);
+
+
+  const clientSideFilteredTransactions = React.useMemo(() => {
     return transactions.filter(tx => {
-      const matchesSearch = tx.external_transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = !searchTerm || // if no search term, all match this part
+                            tx.external_transaction_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             tx.user_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             tx.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             tx.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -53,8 +90,9 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
       const matchesType = typeFilter === 'all' || tx.transaction_type === typeFilter;
       const matchesAsset = assetFilter === 'all' || tx.asset_code === assetFilter;
       return matchesSearch && matchesStatus && matchesType && matchesAsset;
-    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()); // Sort by most recent
+    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [transactions, searchTerm, statusFilter, typeFilter, assetFilter]);
+
 
   const getStatusBadge = (status: TransactionStatus) => {
     switch (status) {
@@ -67,8 +105,8 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
     }
   };
 
-  const transactionStatuses: TransactionStatus[] = ['COMPLETED', 'PENDING', 'PROCESSING', 'FAILED', 'CANCELLED']; 
-  const transactionTypes: TransactionType[] = ['ADJUSTMENT', 'DEPOSIT', 'WITHDRAWAL', 'FEE', 'TRADE_SETTLEMENT']; 
+  const transactionStatuses: TransactionStatus[] = ['COMPLETED', 'PENDING', 'PROCESSING', 'FAILED', 'CANCELLED'];
+  const transactionTypes: TransactionType[] = ['ADJUSTMENT', 'DEPOSIT', 'WITHDRAWAL', 'FEE', 'TRADE_SETTLEMENT'];
   const assetCodes: CurrencyCode[] = ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'];
 
 
@@ -109,6 +147,11 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
                  {assetCodes.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
               </SelectContent>
             </Select>
+            {/* Removed Search Button as search is now on type
+            <Button onClick={fetchFilteredTransactions} disabled={isLoading} className="w-full sm:w-auto">
+              {isLoading ? 'Searching...' : 'Search'}
+            </Button>
+            */}
           </div>
         </div>
 
@@ -123,12 +166,15 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
                 <TableHead>Original Amount</TableHead>
                 <TableHead>Adjustment Value (USDT)</TableHead>
                 <TableHead>Final Balance (USDT)</TableHead>
+                <TableHead>Trading Plan</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Notes</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.length > 0 ? filteredTransactions.map((tx) => (
+              {isLoading ? (
+                <TableRow><TableCell colSpan={10} className="text-center h-24">Loading transactions...</TableCell></TableRow>
+              ) : clientSideFilteredTransactions.length > 0 ? clientSideFilteredTransactions.map((tx) => (
                 <TableRow key={tx.id} className="hover:bg-muted/50">
                   <TableCell><FormattedDateCell dateString={tx.created_at} /></TableCell>
                   <TableCell>
@@ -141,17 +187,21 @@ export function TransactionTableClient({ initialTransactions }: TransactionTable
                   <TableCell>{tx.amount_asset.toFixed(tx.asset_code === 'USD' || tx.asset_code === 'USDT' ? 2 : (tx.asset_code === 'BTC' ? 8 : 6))}</TableCell>
                   <TableCell>{tx.amount_usd_equivalent.toFixed(2)}</TableCell>
                   <TableCell>{tx.balance_after_transaction !== undefined ? tx.balance_after_transaction.toFixed(2) : 'N/A'}</TableCell>
+                  <TableCell className="flex items-center">
+                    {tx.trading_plan_name || 'N/A'}
+                    {tx.trading_plan_name && <Briefcase className="ml-1 h-3 w-3 text-muted-foreground" />}
+                  </TableCell>
                   <TableCell>{getStatusBadge(tx.status)}</TableCell>
                   <TableCell className="max-w-xs truncate" title={tx.notes || undefined}>{tx.notes || 'N/A'}</TableCell>
                 </TableRow>
               )) : (
-                <TableRow><TableCell colSpan={9} className="text-center h-24">No transactions found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10} className="text-center h-24">No transactions found.</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
         </div>
         <div className="p-4 border-t flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Showing {filteredTransactions.length} of {transactions.length} transactions.</p>
+            <p className="text-sm text-muted-foreground">Showing {clientSideFilteredTransactions.length} of {transactions.length} transactions.</p>
             {/* Pagination can be implemented later */}
             <div className="flex gap-2"><Button variant="outline" size="sm" disabled>Previous</Button><Button variant="outline" size="sm" disabled>Next</Button></div>
         </div>

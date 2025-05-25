@@ -2,13 +2,13 @@
 // src/actions/walletActions.ts
 'use server';
 
-import type { Wallet, Transaction, User, CurrencyCode, AdjustBalanceServerActionData, AdjustPandLServerActionData } from '@/lib/types';
+import type { Wallet, Transaction, User, CurrencyCode, TradingPlan } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendEmail } from '@/services/emailService';
-import { getExchangeRate } from '@/services/exchangeRateService'; 
+import { getExchangeRate } from '@/services/exchangeRateService';
 import { getClient, query } from '@/lib/db'; // Use getClient for transactions
-import { findUserById } from './userActions'; // To get user details
+import { findUserById, getAllTradingPlans } from './userActions'; // To get user details and trading plan
 
 async function findWalletByUserId(userId: string): Promise<Wallet | null> {
   try {
@@ -40,7 +40,7 @@ const AdjustBalanceServerSchema = z.object({
   originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), "Invalid original asset code"),
   originalAssetAmount: z.coerce.number().positive("Original asset amount must be positive."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
-  adminId: z.string().optional().default("SYSTEM_ADMIN"), 
+  adminId: z.string().optional().default("SYSTEM_ADMIN"),
 });
 
 export async function adjustUserWalletBalance(
@@ -55,17 +55,20 @@ export async function adjustUserWalletBalance(
 
   const { userId, originalAssetCode, originalAssetAmount, adminNotes, adminId } = validatedFields.data;
 
-  const user = await findUserById(userId); // Fetch user details from DB
+  const user = await findUserById(userId);
   if (!user) {
     return { success: false, message: 'User not found.' };
   }
+  
+  const tradingPlans = await getAllTradingPlans(); // Fetch all trading plans
+  const currentTradingPlan = tradingPlans.find(tp => tp.id === user.trading_plan_id);
 
-  const client = await getClient(); // Get a client for transaction
+
+  const client = await getClient();
 
   try {
     await client.query('BEGIN');
 
-    // Lock the wallet row for update
     const walletRes = await client.query('SELECT * FROM wallets WHERE user_id = $1 FOR UPDATE', [userId]);
     if (walletRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -76,62 +79,68 @@ export async function adjustUserWalletBalance(
 
     let adjustmentAmountForWallet: number;
     try {
-      const exchangeRate = await getExchangeRate(originalAssetCode); // This is a mock service
+      const exchangeRate = await getExchangeRate(originalAssetCode);
       adjustmentAmountForWallet = originalAssetAmount * exchangeRate;
     } catch (error) {
       await client.query('ROLLBACK');
       return { success: false, message: (error as Error).message || "Could not fetch exchange rate." };
     }
-    
-    const newBalance = oldBalance + adjustmentAmountForWallet; 
 
-    if (newBalance < 0 && adjustmentAmountForWallet < 0) { 
+    const newBalance = oldBalance + adjustmentAmountForWallet;
+
+    if (newBalance < 0 && adjustmentAmountForWallet < 0) {
        await client.query('ROLLBACK');
        return { success: false, message: "Adjustment would result in a negative main balance. Operation cancelled." };
     }
-  
+
     const updateWalletRes = await client.query(
       'UPDATE wallets SET balance = $1, updated_at = NOW() WHERE user_id = $2 RETURNING *',
-      [newBalance.toFixed(8), userId] // Ensure correct precision for DB
+      [newBalance.toFixed(8), userId]
     );
     const finalUpdatedWalletData = updateWalletRes.rows[0];
 
-    const adjustmentTransaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'> = {
+    const adjustmentTransactionData = {
       user_id: userId,
       username: user.username,
       user_email: user.email,
       wallet_id: finalUpdatedWalletData.id,
-      transaction_type: 'ADJUSTMENT',
-      asset_code: originalAssetCode, 
-      amount_asset: originalAssetAmount, 
-      amount_usd_equivalent: adjustmentAmountForWallet, 
+      transaction_type: 'ADJUSTMENT' as TransactionType,
+      asset_code: originalAssetCode,
+      amount_asset: originalAssetAmount,
+      amount_usd_equivalent: adjustmentAmountForWallet,
       balance_after_transaction: parseFloat(finalUpdatedWalletData.balance),
-      status: 'COMPLETED', 
+      status: 'COMPLETED' as TransactionStatus,
       notes: `Main Balance Adjustment: ${adminNotes}`,
       admin_processed_by: adminId,
       processed_at: new Date().toISOString(),
+      trading_plan_id: user.trading_plan_id,
+      trading_plan_name: currentTradingPlan?.name || 'N/A',
     };
-    
+
     await client.query(
-      `INSERT INTO transactions (user_id, wallet_id, transaction_type, asset_code, amount_asset, amount_usd_equivalent, balance_after_transaction, status, notes, admin_processed_by, processed_at, user_email, username)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `INSERT INTO transactions (user_id, wallet_id, transaction_type, asset_code, amount_asset, amount_usd_equivalent, balance_after_transaction, status, notes, admin_processed_by, processed_at, user_email, username, trading_plan_id, trading_plan_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
-        adjustmentTransaction.user_id, adjustmentTransaction.wallet_id, adjustmentTransaction.transaction_type,
-        adjustmentTransaction.asset_code, adjustmentTransaction.amount_asset, adjustmentTransaction.amount_usd_equivalent,
-        adjustmentTransaction.balance_after_transaction, adjustmentTransaction.status, adjustmentTransaction.notes,
-        adjustmentTransaction.admin_processed_by, adjustmentTransaction.processed_at,
-        adjustmentTransaction.user_email, adjustmentTransaction.username
+        adjustmentTransactionData.user_id, adjustmentTransactionData.wallet_id, adjustmentTransactionData.transaction_type,
+        adjustmentTransactionData.asset_code, adjustmentTransactionData.amount_asset, adjustmentTransactionData.amount_usd_equivalent,
+        adjustmentTransactionData.balance_after_transaction, adjustmentTransactionData.status, adjustmentTransactionData.notes,
+        adjustmentTransactionData.admin_processed_by, adjustmentTransactionData.processed_at,
+        adjustmentTransactionData.user_email, adjustmentTransactionData.username,
+        adjustmentTransactionData.trading_plan_id, adjustmentTransactionData.trading_plan_name,
       ]
     );
 
     await client.query('COMMIT');
 
-    console.log(`Admin action: Adjusted MAIN balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old Balance: ${oldBalance.toFixed(2)} ${finalUpdatedWalletData.currency}, New Balance: ${newBalance.toFixed(2)} ${finalUpdatedWalletData.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}.`);
-    
+    console.log(`Admin action: Adjusted MAIN balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old Balance: ${oldBalance.toFixed(2)} ${finalUpdatedWalletData.currency}, New Balance: ${newBalance.toFixed(2)} ${finalUpdatedWalletData.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
+
     const finalWalletTyped: Wallet = {
-      ...finalUpdatedWalletData,
+      id: finalUpdatedWalletData.id,
+      user_id: finalUpdatedWalletData.user_id,
+      currency: finalUpdatedWalletData.currency as 'USDT',
       balance: parseFloat(finalUpdatedWalletData.balance),
       profit_loss_balance: parseFloat(finalUpdatedWalletData.profit_loss_balance),
+      is_active: finalUpdatedWalletData.is_active,
       created_at: new Date(finalUpdatedWalletData.created_at).toISOString(),
       updated_at: new Date(finalUpdatedWalletData.updated_at).toISOString(),
     };
@@ -145,8 +154,8 @@ export async function adjustUserWalletBalance(
     }
 
     revalidatePath(`/users/${userId}`);
-    revalidatePath(`/transactions`); 
-    
+    revalidatePath(`/transactions`);
+
     return { success: true, message: 'User main wallet balance updated successfully and adjustment logged.', wallet: finalWalletTyped };
 
   } catch (error) {
@@ -162,7 +171,7 @@ export async function adjustUserWalletBalance(
 // Schema for P&L balance adjustment
 const AdjustPandLServerSchema = z.object({
   userId: z.string().uuid(),
-  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), 
+  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
   adminId: z.string().optional().default("SYSTEM_ADMIN"),
 });
@@ -176,13 +185,16 @@ export async function adjustUserProfitLossBalance(
     const fullMessage = Object.entries(errorMessages).map(([field, errors]) => `${field}: ${errors?.join(', ')}`).join('; ');
     return { success: false, message: "Validation failed for P&L adjustment: " + fullMessage };
   }
-  
+
   const { userId, adjustmentAmount, adminNotes, adminId } = validatedFields.data;
 
   const user = await findUserById(userId);
   if (!user) {
     return { success: false, message: 'User not found for P&L adjustment.' };
   }
+
+  const tradingPlans = await getAllTradingPlans(); // Fetch all trading plans
+  const currentTradingPlan = tradingPlans.find(tp => tp.id === user.trading_plan_id);
 
   const client = await getClient();
 
@@ -204,42 +216,48 @@ export async function adjustUserProfitLossBalance(
     );
     const finalUpdatedWalletData = updateWalletRes.rows[0];
 
-    const pAndLTransaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'> = {
+    const pAndLTransactionData = {
       user_id: userId,
       username: user.username,
       user_email: user.email,
       wallet_id: finalUpdatedWalletData.id,
-      transaction_type: 'ADJUSTMENT',
-      asset_code: 'USDT', 
-      amount_asset: adjustmentAmount, 
-      amount_usd_equivalent: adjustmentAmount, 
+      transaction_type: 'ADJUSTMENT' as TransactionType,
+      asset_code: 'USDT' as CurrencyCode, // P&L Adjustments are in USDT
+      amount_asset: adjustmentAmount,
+      amount_usd_equivalent: adjustmentAmount,
       balance_after_transaction: parseFloat(finalUpdatedWalletData.balance), // Main balance after this P&L op
-      status: 'COMPLETED',
-      notes: `P&L Adjustment: ${adminNotes}`, 
+      status: 'COMPLETED' as TransactionStatus,
+      notes: `P&L Adjustment: ${adminNotes}`,
       admin_processed_by: adminId,
       processed_at: new Date().toISOString(),
+      trading_plan_id: user.trading_plan_id,
+      trading_plan_name: currentTradingPlan?.name || 'N/A',
     };
-    
+
     await client.query(
-      `INSERT INTO transactions (user_id, wallet_id, transaction_type, asset_code, amount_asset, amount_usd_equivalent, balance_after_transaction, status, notes, admin_processed_by, processed_at, user_email, username)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `INSERT INTO transactions (user_id, wallet_id, transaction_type, asset_code, amount_asset, amount_usd_equivalent, balance_after_transaction, status, notes, admin_processed_by, processed_at, user_email, username, trading_plan_id, trading_plan_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
-        pAndLTransaction.user_id, pAndLTransaction.wallet_id, pAndLTransaction.transaction_type,
-        pAndLTransaction.asset_code, pAndLTransaction.amount_asset, pAndLTransaction.amount_usd_equivalent,
-        pAndLTransaction.balance_after_transaction, pAndLTransaction.status, pAndLTransaction.notes,
-        pAndLTransaction.admin_processed_by, pAndLTransaction.processed_at,
-        pAndLTransaction.user_email, pAndLTransaction.username
+        pAndLTransactionData.user_id, pAndLTransactionData.wallet_id, pAndLTransactionData.transaction_type,
+        pAndLTransactionData.asset_code, pAndLTransactionData.amount_asset, pAndLTransactionData.amount_usd_equivalent,
+        pAndLTransactionData.balance_after_transaction, pAndLTransactionData.status, pAndLTransactionData.notes,
+        pAndLTransactionData.admin_processed_by, pAndLTransactionData.processed_at,
+        pAndLTransactionData.user_email, pAndLTransactionData.username,
+        pAndLTransactionData.trading_plan_id, pAndLTransactionData.trading_plan_name,
       ]
     );
-    
+
     await client.query('COMMIT');
-  
-    console.log(`Admin action: Adjusted P&L balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old P&L Balance: ${oldPandLBalance.toFixed(2)} USDT, New P&L Balance: ${newPandLBalance.toFixed(2)} USDT. Adjustment: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} USDT. Final Main Balance after this P&L op: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}.`);
+
+    console.log(`Admin action: Adjusted P&L balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old P&L Balance: ${oldPandLBalance.toFixed(2)} USDT, New P&L Balance: ${newPandLBalance.toFixed(2)} USDT. Adjustment: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} USDT. Final Main Balance after this P&L op: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
 
     const finalWalletTyped: Wallet = {
-      ...finalUpdatedWalletData,
+      id: finalUpdatedWalletData.id,
+      user_id: finalUpdatedWalletData.user_id,
+      currency: finalUpdatedWalletData.currency as 'USDT',
       balance: parseFloat(finalUpdatedWalletData.balance),
       profit_loss_balance: parseFloat(finalUpdatedWalletData.profit_loss_balance),
+      is_active: finalUpdatedWalletData.is_active,
       created_at: new Date(finalUpdatedWalletData.created_at).toISOString(),
       updated_at: new Date(finalUpdatedWalletData.updated_at).toISOString(),
     };
@@ -265,7 +283,6 @@ export async function adjustUserProfitLossBalance(
   }
 }
 
-// New function to get transactions for the log page
 export async function getTransactionsLog(filters?: {
   searchTerm?: string;
   statusFilter?: string;
@@ -279,18 +296,41 @@ export async function getTransactionsLog(filters?: {
   const conditions: string[] = [];
   let paramIndex = 1;
 
-  // Note: Filters would need to be implemented if desired
-  // For now, fetching all, ordered by most recent
-  
+  // Basic search filter (can be expanded)
+  if (filters?.searchTerm) {
+    const searchTermLike = `%${filters.searchTerm.toLowerCase()}%`;
+    conditions.push(
+      `(LOWER(user_email) LIKE $${paramIndex++} OR LOWER(username) LIKE $${paramIndex++} OR LOWER(notes) LIKE $${paramIndex++} OR id::text LIKE $${paramIndex++})`
+    );
+    queryParams.push(searchTermLike, searchTermLike, searchTermLike, searchTermLike);
+  }
+  if (filters?.statusFilter && filters.statusFilter !== 'all') {
+    conditions.push(`status = $${paramIndex++}`);
+    queryParams.push(filters.statusFilter);
+  }
+  if (filters?.typeFilter && filters.typeFilter !== 'all') {
+    conditions.push(`transaction_type = $${paramIndex++}`);
+    queryParams.push(filters.typeFilter);
+  }
+  if (filters?.assetFilter && filters.assetFilter !== 'all') {
+    conditions.push(`asset_code = $${paramIndex++}`);
+    queryParams.push(filters.assetFilter);
+  }
+
+  if (conditions.length > 0) {
+    queryText += ' WHERE ' + conditions.join(' AND ');
+  }
+
   queryText += ' ORDER BY created_at DESC';
-  // if (filters?.limit) {
-  //   queryText += ` LIMIT $${paramIndex++}`;
-  //   queryParams.push(filters.limit);
-  // }
-  // if (filters?.offset) {
-  //   queryText += ` OFFSET $${paramIndex++}`;
-  //   queryParams.push(filters.offset);
-  // }
+
+  if (filters?.limit) {
+    queryText += ` LIMIT $${paramIndex++}`;
+    queryParams.push(filters.limit);
+  }
+  if (filters?.offset) {
+    queryText += ` OFFSET $${paramIndex++}`;
+    queryParams.push(filters.offset);
+  }
 
   try {
     const result = await query(queryText, queryParams);
@@ -312,6 +352,8 @@ export async function getTransactionsLog(filters?: {
       updated_at: new Date(tx.updated_at).toISOString(),
       user_email: tx.user_email,
       username: tx.username,
+      trading_plan_id: tx.trading_plan_id ? parseInt(tx.trading_plan_id, 10) : null,
+      trading_plan_name: tx.trading_plan_name,
     }));
   } catch (error) {
     console.error('Error fetching transactions log:', error);
@@ -319,8 +361,6 @@ export async function getTransactionsLog(filters?: {
   }
 }
 
-// New function to fetch wallet for a user, to be used in user profile page
 export async function getWalletByUserId(userId: string): Promise<Wallet | null> {
   return findWalletByUserId(userId);
 }
-

@@ -44,15 +44,13 @@ export type CreateUserInput = {
   phone_number?: string | null;
   country_code?: string | null;
   trading_plan_id: number;
-  // is_active will default to true in the DB if not provided by action
-  // is_email_verified will default to false in the DB if not provided by action
 };
 
 
 export interface Wallet {
   id: string; // UUID
   user_id: string; // UUID
-  currency: 'USDT';
+  currency: 'USDT'; // Fixed to USDT
   balance: number;
   profit_loss_balance: number;
   is_active: boolean;
@@ -79,6 +77,8 @@ export interface Transaction {
   processed_at?: string | null;
   user_email?: string;
   username?: string;
+  trading_plan_id?: number | null; // User's trading plan ID at the time of tx
+  trading_plan_name?: string | null; // User's trading plan name at the time of tx
 }
 
 export type BalanceAdjustmentFormData = {
@@ -87,12 +87,12 @@ export type BalanceAdjustmentFormData = {
   adminNotes: string;
 };
 
-export interface AdjustBalanceServerActionData extends Omit<BalanceAdjustmentFormData, 'adjustmentAmountForWallet'> {
+export interface AdjustBalanceServerActionData extends BalanceAdjustmentFormData {
   userId: string;
 }
 
 export type PandLAdjustmentFormData = {
-  adjustmentAmount: number;
+  adjustmentAmount: number; // This is in USDT
   adminNotes: string;
 };
 
