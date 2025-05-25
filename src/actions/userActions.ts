@@ -1,10 +1,11 @@
 
 'use server';
 
-import type { User, TradingPlan } from '@/lib/types';
+import type { User, TradingPlan, CreateUserInput } from '@/lib/types';
 import { revalidatePath } from 'next/cache';
 import { sendEmail } from '@/services/emailService';
-import { query } from '@/lib/db';
+import { query, getClient } from '@/lib/db'; // Import getClient for transactions
+import { z } from 'zod';
 
 export async function findUserById(userId: string): Promise<User | null> {
   try {
@@ -12,7 +13,6 @@ export async function findUserById(userId: string): Promise<User | null> {
     if (result.rows.length === 0) {
       return null;
     }
-    // Manually map to ensure type consistency, especially for date fields
     const dbUser = result.rows[0];
     return {
       id: dbUser.id,
@@ -81,6 +81,100 @@ export async function getAllTradingPlans(): Promise<TradingPlan[]> {
   } catch (error) {
     console.error('Error fetching trading plans:', error);
     return [];
+  }
+}
+
+export const CreateUserServerSchema = z.object({
+  firebase_auth_uid: z.string().min(1, "Firebase Auth UID is required."),
+  username: z.string().min(3, "Username must be at least 3 characters.").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores."),
+  email: z.string().email("Invalid email address."),
+  first_name: z.string().optional().nullable(),
+  last_name: z.string().optional().nullable(),
+  phone_number: z.string().optional().nullable(),
+  country_code: z.string().length(2, "Country code must be 2 characters.").optional().nullable(),
+  trading_plan_id: z.coerce.number().int().positive("Trading plan must be selected."),
+});
+
+
+export async function createUser(data: CreateUserInput): Promise<{ success: boolean; message: string; userId?: string }> {
+  const validatedFields = CreateUserServerSchema.safeParse(data);
+  if (!validatedFields.success) {
+    const errorMessages = validatedFields.error.flatten().fieldErrors;
+    const fullMessage = Object.entries(errorMessages).map(([field, errors]) => `${field}: ${errors?.join(', ')}`).join('; ');
+    return { success: false, message: "Validation failed: " + fullMessage };
+  }
+
+  const {
+    firebase_auth_uid,
+    username,
+    email,
+    first_name,
+    last_name,
+    phone_number,
+    country_code,
+    trading_plan_id,
+  } = validatedFields.data;
+
+  const client = await getClient();
+
+  try {
+    await client.query('BEGIN');
+
+    // Insert into users table
+    const userInsertQuery = `
+      INSERT INTO users (firebase_auth_uid, username, email, first_name, last_name, phone_number, country_code, trading_plan_id, is_active, is_email_verified)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, FALSE)
+      RETURNING id;
+    `;
+    const userResult = await client.query(userInsertQuery, [
+      firebase_auth_uid,
+      username,
+      email,
+      first_name || null,
+      last_name || null,
+      phone_number || null,
+      country_code || null,
+      trading_plan_id,
+    ]);
+    const newUserId = userResult.rows[0].id;
+
+    // Insert into wallets table for the new user
+    const walletInsertQuery = `
+      INSERT INTO wallets (user_id, currency, balance, profit_loss_balance, is_active)
+      VALUES ($1, 'USDT', 0, 0, TRUE);
+    `;
+    await client.query(walletInsertQuery, [newUserId]);
+
+    await client.query('COMMIT');
+
+    console.log(`Admin action: Created new user ${username} (ID: ${newUserId}) and associated wallet.`);
+
+    // Optionally, send a welcome email (though not explicitly requested for admin creation)
+    // await sendEmail({
+    //   to: email,
+    //   subject: 'Welcome to FPX Markets!',
+    //   body: `Dear ${username},\n\nAn administrator has created an account for you on FPX Markets.\n\nUsername: ${username}\n\nPlease contact support if you have any questions.\n\nThank you,\nFPX Markets Team`,
+    // });
+
+    revalidatePath('/users');
+    return { success: true, message: `User ${username} created successfully with ID ${newUserId}.`, userId: newUserId };
+
+  } catch (error: any) {
+    await client.query('ROLLBACK');
+    console.error('Error creating user:', error);
+    // Check for unique constraint violation
+    if (error.code === '23505') { // PostgreSQL unique_violation error code
+        if (error.constraint === 'users_username_key') {
+            return { success: false, message: 'Username already exists. Please choose a different username.' };
+        } else if (error.constraint === 'users_email_key') {
+            return { success: false, message: 'Email address already in use. Please use a different email.' };
+        } else if (error.constraint === 'users_firebase_auth_uid_key') {
+            return { success: false, message: 'Firebase Auth UID already in use.' };
+        }
+    }
+    return { success: false, message: 'Database error occurred while creating user. Details: ' + error.message };
+  } finally {
+    client.release();
   }
 }
 
