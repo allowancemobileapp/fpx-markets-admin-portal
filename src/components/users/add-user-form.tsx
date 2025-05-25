@@ -28,11 +28,21 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { createUser, CreateUserServerSchema } from '@/actions/userActions'; // Use the server schema for client-side validation too
+import { createUser } from '@/actions/userActions'; 
 import { useState, useTransition } from 'react';
 
-// Client-side schema can mirror the server-side one for consistency
-const AddUserFormSchema = CreateUserServerSchema;
+// Schema for client-side validation, identical to the server-side one.
+const AddUserFormSchema = z.object({
+  firebase_auth_uid: z.string().min(1, "Firebase Auth UID is required."),
+  username: z.string().min(3, "Username must be at least 3 characters.").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores."),
+  email: z.string().email("Invalid email address."),
+  first_name: z.string().optional().nullable(),
+  last_name: z.string().optional().nullable(),
+  phone_number: z.string().optional().nullable(),
+  country_code: z.string().length(2, "Country code must be 2 characters.").optional().nullable(),
+  trading_plan_id: z.coerce.number().int().positive("Trading plan must be selected."),
+});
+
 
 type AddUserFormData = z.infer<typeof AddUserFormSchema>;
 

@@ -84,7 +84,8 @@ export async function getAllTradingPlans(): Promise<TradingPlan[]> {
   }
 }
 
-export const CreateUserServerSchema = z.object({
+// Internal schema for server-side validation, not exported
+const CreateUserServerSchema = z.object({
   firebase_auth_uid: z.string().min(1, "Firebase Auth UID is required."),
   username: z.string().min(3, "Username must be at least 3 characters.").regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores."),
   email: z.string().email("Invalid email address."),
