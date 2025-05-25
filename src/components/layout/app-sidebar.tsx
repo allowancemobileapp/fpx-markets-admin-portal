@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -15,9 +16,20 @@ import {
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { signOut, user } = useAuth(); // Get signOut function and user from context
+
+  const handleLogout = async () => {
+    await signOut();
+    // Router will redirect to /login via AuthContext or AppLayout effect
+  };
+
+  if (!user) { // Optionally, don't render sidebar if no user (though AppLayout should handle redirect)
+    return null;
+  }
 
   return (
     <Sidebar collapsible="icon" variant="sidebar" side="left">
@@ -44,7 +56,7 @@ export function AppSidebar() {
                 }}
                 className={cn(
                   "justify-start",
-                  (pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))) && 
+                  (pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))) &&
                   "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground"
                 )}
               >
@@ -63,7 +75,7 @@ export function AppSidebar() {
         <SidebarMenuButton
           tooltip={{ children: 'Logout', className: 'bg-destructive text-destructive-foreground' }}
           className="justify-start hover:bg-destructive/20 hover:text-destructive"
-          onClick={() => alert('Logout functionality not implemented.')}
+          onClick={handleLogout} // Use the new handleLogout function
         >
           <LogOut className="h-5 w-5" />
           <span className="group-data-[collapsible=icon]:hidden">Logout</span>

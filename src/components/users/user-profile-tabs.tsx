@@ -1,16 +1,15 @@
 
 'use client';
 
-import type { User, Wallet, CurrencyCode, AdjustBalanceServerActionData, AdjustPandLServerActionData, TradingPlan } from '@/lib/types';
+import type { User, Wallet, CurrencyCode, TradingPlan } from '@/lib/types'; // Removed AdjustBalanceServerActionData, AdjustPandLServerActionData as they are inferred
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label'; // Keep Label import for direct use if any
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { updateUserTradingPlan, toggleUserActiveStatus, getAllTradingPlans } from '@/actions/userActions';
+import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userActions';
 import { adjustUserWalletBalance, adjustUserProfitLossBalance } from '@/actions/walletActions';
 import { useState, useTransition, useEffect } from 'react';
 import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building } from 'lucide-react';
@@ -26,7 +25,8 @@ import {
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form'; // Ensure all form components are imported
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 // Schema for main balance adjustment (external asset conversion)
 const AdjustBalanceFormSchema = z.object({
@@ -38,45 +38,44 @@ const AdjustBalanceFormSchema = z.object({
 });
 type AdjustBalanceFormData = z.infer<typeof AdjustBalanceFormSchema>;
 
-
 // Schema for P&L balance adjustment
 const AdjustPandLFormSchema = z.object({
-  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."), 
+  adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long (e.g., reason for P&L change)."),
 });
 type AdjustPandLFormData = z.infer<typeof AdjustPandLFormSchema>;
 
-
 interface UserProfileTabsProps {
   user: User;
   wallet: Wallet;
-  tradingPlans: TradingPlan[]; // Pass trading plans
+  tradingPlans: TradingPlan[];
 }
 
 const availableAssetCodes: CurrencyCode[] = ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'];
-const MOCK_ADMIN_PIN = "0000"; // Updated PIN
+const MOCK_ADMIN_PIN = "0000";
 
 export function UserProfileTabs({ user: initialUser, wallet: initialWallet, tradingPlans }: UserProfileTabsProps) {
   const { toast } = useToast();
   const [isProcessing, startTransition] = useTransition();
-  
+  const { user: adminUser } = useAuth(); // Get the currently logged-in admin
+
   const [user, setUser] = useState<User>(initialUser);
   const [wallet, setWallet] = useState<Wallet>(initialWallet);
   const [formattedWalletUpdatedAt, setFormattedWalletUpdatedAt] = useState<string | null>(null);
 
   const [selectedTradingPlanId, setSelectedTradingPlanId] = useState<number>(user.trading_plan_id);
-  
+
   const [isAdjustBalanceDialogOpen, setIsAdjustBalanceDialogOpen] = useState(false);
   const [isAdjustPandLDialogOpen, setIsAdjustPandLDialogOpen] = useState(false);
   const [isPinDialogOpen, setIsPinDialogOpen] = useState(false);
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState('');
-  
+
   type PendingActionType = 'mainBalance' | 'pandlBalance';
   const [pendingActionType, setPendingActionType] = useState<PendingActionType | null>(null);
-  const [mainBalanceDataToSubmit, setMainBalanceDataToSubmit] = useState<AdjustBalanceServerActionData | null>(null);
-  const [pandlDataToSubmit, setPandlDataToSubmit] = useState<AdjustPandLServerActionData | null>(null);
-
+  // Store full data for server action, not just form data
+  const [mainBalanceDataToSubmit, setMainBalanceDataToSubmit] = useState<Parameters<typeof adjustUserWalletBalance>[0] | null>(null);
+  const [pandlDataToSubmit, setPandlDataToSubmit] = useState<Parameters<typeof adjustUserProfitLossBalance>[0] | null>(null);
 
   const mainBalanceForm = useForm<AdjustBalanceFormData>({
     resolver: zodResolver(AdjustBalanceFormSchema),
@@ -94,7 +93,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
       adminNotes: '',
     },
   });
-  
+
   useEffect(() => {
     setUser(initialUser);
     setWallet(initialWallet);
@@ -102,7 +101,6 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
   }, [initialUser, initialWallet]);
 
   useEffect(() => {
-    // Client-side date formatting to avoid hydration errors
     if (typeof window !== 'undefined' && wallet?.updated_at) {
       try {
         setFormattedWalletUpdatedAt(new Date(wallet.updated_at).toLocaleString());
@@ -114,7 +112,6 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
         setFormattedWalletUpdatedAt("N/A");
     }
   }, [wallet?.updated_at]);
-
 
   const handleTradingPlanUpdate = () => {
     startTransition(async () => {
@@ -151,18 +148,18 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
   };
 
   const onMainBalanceFormSubmit = (data: AdjustBalanceFormData) => {
-    setMainBalanceDataToSubmit({ userId: user.id, ...data });
+    setMainBalanceDataToSubmit({ userId: user.id, ...data, adminId: adminUser?.email || adminUser?.uid || 'SYSTEM_ADMIN' });
     setPendingActionType('mainBalance');
-    setIsAdjustBalanceDialogOpen(false); 
+    setIsAdjustBalanceDialogOpen(false);
     setIsPinDialogOpen(true);
     setEnteredPin('');
     setPinError('');
   };
 
   const onPandLFormSubmit = (data: AdjustPandLFormData) => {
-    setPandlDataToSubmit({ userId: user.id, ...data });
+    setPandlDataToSubmit({ userId: user.id, ...data, adminId: adminUser?.email || adminUser?.uid || 'SYSTEM_ADMIN' });
     setPendingActionType('pandlBalance');
-    setIsAdjustPandLDialogOpen(false); 
+    setIsAdjustPandLDialogOpen(false);
     setIsPinDialogOpen(true);
     setEnteredPin('');
     setPinError('');
@@ -172,12 +169,13 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     if (enteredPin === MOCK_ADMIN_PIN) {
       setPinError('');
       setIsPinDialogOpen(false);
-      
+      const adminIdentifier = adminUser?.email || adminUser?.uid;
+
       if (pendingActionType === 'mainBalance' && mainBalanceDataToSubmit) {
         startTransition(async () => {
-          const result = await adjustUserWalletBalance(mainBalanceDataToSubmit);
+          const result = await adjustUserWalletBalance(mainBalanceDataToSubmit, adminIdentifier);
           if (result.success && result.wallet) {
-            setWallet(result.wallet); // Update local wallet state
+            setWallet(result.wallet);
             toast({ title: "Success", description: result.message });
           } else {
             toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -186,9 +184,9 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
         });
       } else if (pendingActionType === 'pandlBalance' && pandlDataToSubmit) {
         startTransition(async () => {
-          const result = await adjustUserProfitLossBalance(pandlDataToSubmit);
+          const result = await adjustUserProfitLossBalance(pandlDataToSubmit, adminIdentifier);
            if (result.success && result.wallet) {
-            setWallet(result.wallet); // Update local wallet state
+            setWallet(result.wallet);
             toast({ title: "Success", description: result.message });
           } else {
             toast({ title: "Error", description: result.message, variant: "destructive" });
@@ -202,7 +200,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
       setEnteredPin('');
     }
   };
-  
+
   const handlePinDialogClose = () => {
     setIsPinDialogOpen(false);
     setEnteredPin('');
@@ -211,7 +209,6 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     setPandlDataToSubmit(null);
     setPendingActionType(null);
   }
-
 
   return (
     <>
@@ -247,9 +244,9 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                 </div>
                 <div className="flex items-center">
                     <Fingerprint className="mr-2 h-4 w-4 text-muted-foreground" />
-                    <strong>PIN Setup:</strong> 
-                    {user.pin_setup_completed_at ? 
-                        <><span className="ml-1 text-green-600 font-medium">Completed</span> (<span className="text-muted-foreground text-xs">{new Date(user.pin_setup_completed_at).toLocaleDateString()}</span>)</> : 
+                    <strong>PIN Setup:</strong>
+                    {user.pin_setup_completed_at ?
+                        <><span className="ml-1 text-green-600 font-medium">Completed</span> (<span className="text-muted-foreground text-xs">{new Date(user.pin_setup_completed_at).toLocaleDateString()}</span>)</> :
                         <span className="ml-1 text-orange-500 font-medium">Not Yet Setup</span>}
                 </div>
 
@@ -272,7 +269,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                   {wallet.balance.toFixed(2)} <span className="text-xl text-muted-foreground">{wallet.currency}</span>
                 </div>
                 <CardDescription className="text-xs mb-3">User's main available funds. Use 'Adjust Balance' for confirmed external transactions.</CardDescription>
-                <Button onClick={openAdjustBalanceDialog} variant="outline" size="sm">
+                <Button onClick={openAdjustBalanceDialog} variant="outline" size="sm" disabled={isProcessing}>
                   <Edit3 className="mr-2 h-4 w-4" /> Adjust Balance
                 </Button>
               </CardContent>
@@ -288,7 +285,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                   {wallet.profit_loss_balance.toFixed(2)} <span className="text-xl text-muted-foreground">{wallet.currency}</span>
                 </div>
                 <CardDescription className="text-xs mb-3">User's realized profit or loss. Adjusted by admin for specific cases like bonuses or corrections.</CardDescription>
-                <Button onClick={openAdjustPandLDialog} variant="outline" size="sm">
+                <Button onClick={openAdjustPandLDialog} variant="outline" size="sm" disabled={isProcessing}>
                   <Edit3 className="mr-2 h-4 w-4" /> Adjust P&L Balance
                 </Button>
               </CardContent>
@@ -298,7 +295,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
             </p>
           </div>
         </TabsContent>
-        
+
         <TabsContent value="actions">
           <div className="space-y-6">
             <Card>
@@ -309,8 +306,8 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Button 
-                  onClick={handleToggleActiveStatus} 
+                <Button
+                  onClick={handleToggleActiveStatus}
                   disabled={isProcessing}
                   variant={user.is_active ? "destructive" : "default"}
                 >
@@ -329,7 +326,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label htmlFor="tradingPlanSelect">New Trading Plan</Label>
+                  <FormLabel htmlFor="tradingPlanSelect">New Trading Plan</FormLabel> {/* Changed Label to FormLabel */}
                   <Select value={selectedTradingPlanId.toString()} onValueChange={(value) => setSelectedTradingPlanId(Number(value))}>
                       <SelectTrigger id="tradingPlanSelect">
                           <SelectValue placeholder="Select new trading plan" />
@@ -354,7 +351,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
       </Tabs>
 
       {/* Adjust Main Account Balance Dialog */}
-      <AlertDialog open={isAdjustBalanceDialogOpen} onOpenChange={setIsAdjustBalanceDialogOpen}>
+      <AlertDialog open={isAdjustBalanceDialogOpen} onOpenChange={(isOpen) => { if (!isOpen) mainBalanceForm.reset(); setIsAdjustBalanceDialogOpen(isOpen); }}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Adjust User Main Account Balance</AlertDialogTitle>
@@ -426,7 +423,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
       </AlertDialog>
 
       {/* Adjust P&L Balance Dialog */}
-      <AlertDialog open={isAdjustPandLDialogOpen} onOpenChange={setIsAdjustPandLDialogOpen}>
+      <AlertDialog open={isAdjustPandLDialogOpen} onOpenChange={(isOpen) => { if(!isOpen) pandlForm.reset(); setIsAdjustPandLDialogOpen(isOpen);}}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Adjust User P&L Balance</AlertDialogTitle>
@@ -481,7 +478,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary"/>Admin PIN Verification</AlertDialogTitle>
             <AlertDialogDescription>
-              Enter your 4-digit Admin PIN to authorize this balance adjustment.
+              Enter your 4-digit Admin PIN to authorize this balance adjustment. (Default: 0000)
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3 py-2">
@@ -493,7 +490,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
               placeholder="Enter 4-digit PIN"
               value={enteredPin}
               onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, ''); 
+                const val = e.target.value.replace(/\D/g, '');
                 if (val.length <= 4) {
                   setEnteredPin(val);
                 }
@@ -515,5 +512,3 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     </>
   );
 }
-
-    

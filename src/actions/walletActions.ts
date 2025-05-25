@@ -7,8 +7,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendEmail } from '@/services/emailService';
 import { getExchangeRate } from '@/services/exchangeRateService';
-import { getClient, query } from '@/lib/db'; // Use getClient for transactions
-import { findUserById, getAllTradingPlans } from './userActions'; // To get user details and trading plan
+import { getClient, query } from '@/lib/db';
+import { findUserById, getAllTradingPlans } from './userActions';
 
 async function findWalletByUserId(userId: string): Promise<Wallet | null> {
   try {
@@ -20,7 +20,7 @@ async function findWalletByUserId(userId: string): Promise<Wallet | null> {
     return {
       id: dbWallet.id,
       user_id: dbWallet.user_id,
-      currency: dbWallet.currency as 'USDT', // Schema enforces USDT
+      currency: dbWallet.currency as 'USDT',
       balance: parseFloat(dbWallet.balance),
       profit_loss_balance: parseFloat(dbWallet.profit_loss_balance),
       is_active: dbWallet.is_active,
@@ -33,18 +33,17 @@ async function findWalletByUserId(userId: string): Promise<Wallet | null> {
   }
 }
 
-
-// Schema for main balance adjustment (external asset)
 const AdjustBalanceServerSchema = z.object({
   userId: z.string().uuid(),
   originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), "Invalid original asset code"),
   originalAssetAmount: z.coerce.number().positive("Original asset amount must be positive."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
-  adminId: z.string().optional().default("SYSTEM_ADMIN"),
+  adminId: z.string().optional().default("SYSTEM_ADMIN"), // Will be updated if admin is logged in
 });
 
 export async function adjustUserWalletBalance(
-  data: z.infer<typeof AdjustBalanceServerSchema>
+  data: z.infer<typeof AdjustBalanceServerSchema>,
+  adminUserIdentifier?: string // Pass admin's email or UID from auth context
 ): Promise<{ success: boolean; message: string; wallet?: Wallet }> {
   const validatedFields = AdjustBalanceServerSchema.safeParse(data);
   if (!validatedFields.success) {
@@ -53,16 +52,17 @@ export async function adjustUserWalletBalance(
     return { success: false, message: "Validation failed: " + fullMessage };
   }
 
-  const { userId, originalAssetCode, originalAssetAmount, adminNotes, adminId } = validatedFields.data;
+  const { userId, originalAssetCode, originalAssetAmount, adminNotes } = validatedFields.data;
+  const adminProcessedBy = adminUserIdentifier || validatedFields.data.adminId;
+
 
   const user = await findUserById(userId);
   if (!user) {
     return { success: false, message: 'User not found.' };
   }
-  
-  const tradingPlans = await getAllTradingPlans(); // Fetch all trading plans
-  const currentTradingPlan = tradingPlans.find(tp => tp.id === user.trading_plan_id);
 
+  const tradingPlans = await getAllTradingPlans();
+  const currentTradingPlan = tradingPlans.find(tp => tp.id === user.trading_plan_id);
 
   const client = await getClient();
 
@@ -111,7 +111,7 @@ export async function adjustUserWalletBalance(
       balance_after_transaction: parseFloat(finalUpdatedWalletData.balance),
       status: 'COMPLETED' as const,
       notes: `Main Balance Adjustment: ${adminNotes}`,
-      admin_processed_by: adminId,
+      admin_processed_by: adminProcessedBy,
       processed_at: new Date().toISOString(),
       trading_plan_id: user.trading_plan_id,
       trading_plan_name: currentTradingPlan?.name || 'N/A',
@@ -132,7 +132,7 @@ export async function adjustUserWalletBalance(
 
     await client.query('COMMIT');
 
-    console.log(`Admin action: Adjusted MAIN balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old Balance: ${oldBalance.toFixed(2)} ${finalUpdatedWalletData.currency}, New Balance: ${newBalance.toFixed(2)} ${finalUpdatedWalletData.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
+    console.log(`Admin action by ${adminProcessedBy}: Adjusted MAIN balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old Balance: ${oldBalance.toFixed(2)} ${finalUpdatedWalletData.currency}, New Balance: ${newBalance.toFixed(2)} ${finalUpdatedWalletData.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
 
     const finalWalletTyped: Wallet = {
       id: finalUpdatedWalletData.id,
@@ -183,17 +183,16 @@ export async function adjustUserWalletBalance(
   }
 }
 
-
-// Schema for P&L balance adjustment
 const AdjustPandLServerSchema = z.object({
   userId: z.string().uuid(),
   adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
-  adminId: z.string().optional().default("SYSTEM_ADMIN"),
+  adminId: z.string().optional().default("SYSTEM_ADMIN"), // Will be updated if admin is logged in
 });
 
 export async function adjustUserProfitLossBalance(
-  data: z.infer<typeof AdjustPandLServerSchema>
+  data: z.infer<typeof AdjustPandLServerSchema>,
+  adminUserIdentifier?: string // Pass admin's email or UID from auth context
 ): Promise<{ success: boolean; message: string; wallet?: Wallet }> {
   const validatedFields = AdjustPandLServerSchema.safeParse(data);
   if (!validatedFields.success) {
@@ -202,14 +201,16 @@ export async function adjustUserProfitLossBalance(
     return { success: false, message: "Validation failed for P&L adjustment: " + fullMessage };
   }
 
-  const { userId, adjustmentAmount, adminNotes, adminId } = validatedFields.data;
+  const { userId, adjustmentAmount, adminNotes } = validatedFields.data;
+  const adminProcessedBy = adminUserIdentifier || validatedFields.data.adminId;
+
 
   const user = await findUserById(userId);
   if (!user) {
     return { success: false, message: 'User not found for P&L adjustment.' };
   }
 
-  const tradingPlans = await getAllTradingPlans(); // Fetch all trading plans
+  const tradingPlans = await getAllTradingPlans();
   const currentTradingPlan = tradingPlans.find(tp => tp.id === user.trading_plan_id);
 
   const client = await getClient();
@@ -238,13 +239,13 @@ export async function adjustUserProfitLossBalance(
       user_email: user.email,
       wallet_id: finalUpdatedWalletData.id,
       transaction_type: 'ADJUSTMENT' as const,
-      asset_code: 'USDT' as CurrencyCode, // P&L Adjustments are in USDT
+      asset_code: 'USDT' as CurrencyCode,
       amount_asset: adjustmentAmount,
       amount_usd_equivalent: adjustmentAmount,
-      balance_after_transaction: parseFloat(finalUpdatedWalletData.balance), // Main balance after this P&L op
+      balance_after_transaction: parseFloat(finalUpdatedWalletData.balance),
       status: 'COMPLETED' as const,
       notes: `P&L Adjustment: ${adminNotes}`,
-      admin_processed_by: adminId,
+      admin_processed_by: adminProcessedBy,
       processed_at: new Date().toISOString(),
       trading_plan_id: user.trading_plan_id,
       trading_plan_name: currentTradingPlan?.name || 'N/A',
@@ -265,7 +266,7 @@ export async function adjustUserProfitLossBalance(
 
     await client.query('COMMIT');
 
-    console.log(`Admin action: Adjusted P&L balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old P&L Balance: ${oldPandLBalance.toFixed(2)} USDT, New P&L Balance: ${newPandLBalance.toFixed(2)} USDT. Adjustment: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} USDT. Final Main Balance after this P&L op: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
+    console.log(`Admin action by ${adminProcessedBy}: Adjusted P&L balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old P&L Balance: ${oldPandLBalance.toFixed(2)} USDT, New P&L Balance: ${newPandLBalance.toFixed(2)} USDT. Adjustment: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} USDT. Final Main Balance after this P&L op: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
 
     const finalWalletTyped: Wallet = {
       id: finalUpdatedWalletData.id,
@@ -322,12 +323,11 @@ export async function getTransactionsLog(filters?: {
   limit?: number;
   offset?: number;
 }): Promise<Transaction[]> {
-  let queryText = 'SELECT * FROM transactions';
+  let queryText = 'SELECT id, user_id, wallet_id, transaction_type, asset_code, amount_asset, amount_usd_equivalent, balance_after_transaction, status, external_transaction_id, notes, admin_processed_by, processed_at, created_at, updated_at, user_email, username, trading_plan_id, trading_plan_name FROM transactions';
   const queryParams: any[] = [];
   const conditions: string[] = [];
   let paramIndex = 1;
 
-  // Basic search filter (can be expanded)
   if (filters?.searchTerm) {
     const searchTermLike = `%${filters.searchTerm.toLowerCase()}%`;
     conditions.push(
@@ -395,4 +395,3 @@ export async function getTransactionsLog(filters?: {
 export async function getWalletByUserId(userId: string): Promise<Wallet | null> {
   return findWalletByUserId(userId);
 }
-
