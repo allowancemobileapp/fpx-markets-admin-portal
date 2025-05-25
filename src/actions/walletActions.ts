@@ -104,12 +104,12 @@ export async function adjustUserWalletBalance(
       username: user.username,
       user_email: user.email,
       wallet_id: finalUpdatedWalletData.id,
-      transaction_type: 'ADJUSTMENT' as TransactionType,
+      transaction_type: 'ADJUSTMENT' as const,
       asset_code: originalAssetCode,
       amount_asset: originalAssetAmount,
       amount_usd_equivalent: adjustmentAmountForWallet,
       balance_after_transaction: parseFloat(finalUpdatedWalletData.balance),
-      status: 'COMPLETED' as TransactionStatus,
+      status: 'COMPLETED' as const,
       notes: `Main Balance Adjustment: ${adminNotes}`,
       admin_processed_by: adminId,
       processed_at: new Date().toISOString(),
@@ -146,10 +146,26 @@ export async function adjustUserWalletBalance(
     };
 
     if (user.email) {
+        const emailSubject = "Your FPX Markets Account Balance Has Been Updated";
+        const emailBody = `
+<p>Dear ${user.username || 'Valued User'},</p>
+<p>An administrator has updated your main account balance on FPX Markets.</p>
+<p><strong>Transaction Details:</strong></p>
+<ul>
+    <li><strong>Original Transaction Asset:</strong> ${originalAssetCode}</li>
+    <li><strong>Original Transaction Amount:</strong> ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : (originalAssetCode === 'BTC' || originalAssetCode === 'ETH' ? 8 : 6) )} ${originalAssetCode}</li>
+    <li><strong>Equivalent Change to Your Account Balance:</strong> ${adjustmentAmountForWallet > 0 ? '+' : ''}${adjustmentAmountForWallet.toFixed(2)} ${finalWalletTyped.currency}</li>
+    <li><strong>New Account Balance:</strong> ${newBalance.toFixed(2)} ${finalWalletTyped.currency}</li>
+</ul>
+<p><strong>Reason/Notes from Admin:</strong></p>
+<p>${adminNotes}</p>
+<p>If you have any questions or believe this adjustment was made in error, please contact our support team immediately.</p>
+<p>Thank you,<br>The FPX Markets Team</p>
+`;
       await sendEmail({
         to: user.email,
-        subject: `Your Account Balance Has Been Updated by Admin`,
-        body: `Dear ${user.username || 'User'},\n\nAn administrator has updated your account's main balance.\n\nDetails of external transaction: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode}\nEquivalent change to your account balance: ${adjustmentAmountForWallet > 0 ? '+' : ''}${adjustmentAmountForWallet.toFixed(2)} ${finalWalletTyped.currency}\nNew Account Balance: ${newBalance.toFixed(2)} ${finalWalletTyped.currency}\nReason: ${adminNotes}\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
+        subject: emailSubject,
+        body: emailBody,
       });
     }
 
@@ -221,12 +237,12 @@ export async function adjustUserProfitLossBalance(
       username: user.username,
       user_email: user.email,
       wallet_id: finalUpdatedWalletData.id,
-      transaction_type: 'ADJUSTMENT' as TransactionType,
+      transaction_type: 'ADJUSTMENT' as const,
       asset_code: 'USDT' as CurrencyCode, // P&L Adjustments are in USDT
       amount_asset: adjustmentAmount,
       amount_usd_equivalent: adjustmentAmount,
       balance_after_transaction: parseFloat(finalUpdatedWalletData.balance), // Main balance after this P&L op
-      status: 'COMPLETED' as TransactionStatus,
+      status: 'COMPLETED' as const,
       notes: `P&L Adjustment: ${adminNotes}`,
       admin_processed_by: adminId,
       processed_at: new Date().toISOString(),
@@ -263,10 +279,25 @@ export async function adjustUserProfitLossBalance(
     };
 
     if (user.email) {
+        const emailSubject = "Your FPX Markets P&L Balance Has Been Updated";
+        const emailBody = `
+<p>Dear ${user.username || 'Valued User'},</p>
+<p>An administrator has updated your Profit & Loss (P&L) balance on FPX Markets.</p>
+<p><strong>Adjustment Details:</strong></p>
+<ul>
+    <li><strong>Adjustment Amount:</strong> ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} ${finalWalletTyped.currency}</li>
+    <li><strong>New P&L Balance:</strong> ${newPandLBalance.toFixed(2)} ${finalWalletTyped.currency}</li>
+</ul>
+<p><strong>Reason/Notes from Admin:</strong></p>
+<p>${adminNotes}</p>
+<p>This P&L adjustment may also affect your total account equity.</p>
+<p>If you have any questions or believe this adjustment was made in error, please contact our support team immediately.</p>
+<p>Thank you,<br>The FPX Markets Team</p>
+`;
       await sendEmail({
         to: user.email,
-        subject: `Your Profit & Loss Balance Has Been Updated by Admin`,
-        body: `Dear ${user.username || 'User'},\n\nAn administrator has updated your Profit & Loss (P&L) balance.\n\nAdjustment Amount: ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} ${finalWalletTyped.currency}\nNew P&L Balance: ${newPandLBalance.toFixed(2)} ${finalWalletTyped.currency}\nReason: ${adminNotes}\n\nThis P&L adjustment may also affect your total account equity.\n\nIf you have any questions, please contact support.\n\nThank you,\nFPX Markets Team`,
+        subject: emailSubject,
+        body: emailBody,
       });
     }
 
@@ -364,3 +395,4 @@ export async function getTransactionsLog(filters?: {
 export async function getWalletByUserId(userId: string): Promise<Wallet | null> {
   return findWalletByUserId(userId);
 }
+
