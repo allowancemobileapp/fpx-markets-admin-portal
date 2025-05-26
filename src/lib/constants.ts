@@ -1,5 +1,6 @@
+
 import type { LucideIcon } from 'lucide-react';
-import { LayoutDashboard, Users, ListFilter } from 'lucide-react';
+import { LayoutDashboard, Users, ListFilter, ShieldCheck } from 'lucide-react'; // Added ShieldCheck
 
 export interface NavItem {
   title: string;
@@ -26,8 +27,14 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     title: 'Transaction Log',
-    href: '/transactions', // This page now shows admin adjustments
+    href: '/transactions',
     icon: ListFilter,
     description: 'View log of admin balance adjustments.',
+  },
+  {
+    title: 'Security', // New navigation item
+    href: '/security',
+    icon: ShieldCheck,
+    description: 'Manage your Admin PIN.',
   },
 ];
