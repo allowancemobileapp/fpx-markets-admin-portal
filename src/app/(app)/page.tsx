@@ -1,6 +1,3 @@
-// This file is intentionally left empty or can be deleted.
-// The root of the (app) group should redirect or be handled by a more specific route like /dashboard.
-// To ensure no conflict, we are making it minimal.
 'use client';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
