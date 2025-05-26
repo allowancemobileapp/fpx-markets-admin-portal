@@ -14,7 +14,7 @@ import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userAct
 import { adjustUserWalletBalance, adjustUserProfitLossBalance } from '@/actions/walletActions';
 import { verifyAdminPin } from '@/actions/adminActions';
 import { useState, useTransition, useEffect } from 'react';
-import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building, Briefcase } from 'lucide-react';
+import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building, Briefcase, Coins, Info } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,13 +29,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useAuth } from '@/contexts/AuthContext';
-import { Label } from '@/components/ui/label'; // Added import
+import { Label } from '@/components/ui/label';
 
+// Schema for adjusting main balance (deposits/withdrawals)
 const AdjustBalanceFormSchema = z.object({
   originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), {
     message: "Please select the asset of the external transaction.",
   }),
-  originalAssetAmount: z.coerce.number().positive("Amount must be a positive number."),
+  // Allow negative for withdrawals, positive for deposits
+  originalAssetAmount: z.coerce.number().refine(val => val !== 0, "Amount cannot be zero. Use positive for deposits, negative for withdrawals."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long (e.g., transaction ID, reason)."),
 });
 type AdjustBalanceFormData = z.infer<typeof AdjustBalanceFormSchema>;
@@ -153,8 +155,8 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     }
     setMainBalanceDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('mainBalance');
-    setIsAdjustBalanceDialogOpen(false);
-    setIsPinDialogOpen(true);
+    setIsAdjustBalanceDialogOpen(false); // Close current dialog
+    setIsPinDialogOpen(true); // Open PIN dialog
     setEnteredPin('');
     setPinError('');
   };
@@ -166,8 +168,8 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     }
     setPandlDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('pandlBalance');
-    setIsAdjustPandLDialogOpen(false);
-    setIsPinDialogOpen(true);
+    setIsAdjustPandLDialogOpen(false); // Close current dialog
+    setIsPinDialogOpen(true); // Open PIN dialog
     setEnteredPin('');
     setPinError('');
   };
@@ -177,8 +179,8 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
       setPinError("Admin user not authenticated. Please re-login.");
       return;
     }
-    if (enteredPin.length !== 4) {
-      setPinError("PIN must be 4 digits.");
+    if (enteredPin.length !== 4 || !/^\d{4}$/.test(enteredPin)) {
+      setPinError("PIN must be exactly 4 digits.");
       return;
     }
 
@@ -283,37 +285,42 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
           <div className="space-y-6">
             <Card className="shadow-md border-primary/50">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-lg font-semibold">Account Balance</CardTitle>
-                <WalletCards className="h-6 w-6 text-primary" />
+                <CardTitle className="text-lg font-semibold flex items-center"><Coins className="mr-2 h-5 w-5 text-primary" />Account Balance</CardTitle>
+                <Button onClick={openAdjustBalanceDialog} variant="outline" size="sm" disabled={isProcessing}>
+                  <Edit3 className="mr-2 h-4 w-4" /> Adjust Balance
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-primary mb-1">
                   {wallet.balance.toFixed(2)} <span className="text-xl text-muted-foreground">{wallet.currency}</span>
                 </div>
-                <CardDescription className="text-xs mb-3">User's main available funds. Use 'Adjust Balance' for confirmed external transactions.</CardDescription>
-                <Button onClick={openAdjustBalanceDialog} variant="outline" size="sm" disabled={isProcessing}>
-                  <Edit3 className="mr-2 h-4 w-4" /> Adjust Balance
-                </Button>
+                <CardDescription className="text-xs mb-3">
+                  User's main available funds. Use 'Adjust Balance' to reflect confirmed external deposits or withdrawals.
+                  <br />
+                  <span className="italic">Ensure exchange rates used by the system are up-to-date for accuracy.</span>
+                </CardDescription>
               </CardContent>
             </Card>
 
             <Card className="shadow-md border-accent/50">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-lg font-semibold">Profit & Loss (P&L)</CardTitle>
-                {wallet.profit_loss_balance >= 0 ? <TrendingUp className="h-6 w-6 text-green-500" /> : <TrendingDown className="h-6 w-6 text-red-500" />}
+                <CardTitle className="text-lg font-semibold flex items-center">
+                  {wallet.profit_loss_balance >= 0 ? <TrendingUp className="mr-2 h-5 w-5 text-green-500" /> : <TrendingDown className="mr-2 h-5 w-5 text-red-500" />}
+                  Profit & Loss (P&L)
+                </CardTitle>
+                 <Button onClick={openAdjustPandLDialog} variant="outline" size="sm" disabled={isProcessing}>
+                  <Edit3 className="mr-2 h-4 w-4" /> Adjust P&L
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className={`text-3xl font-bold mb-1 ${wallet.profit_loss_balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {wallet.profit_loss_balance.toFixed(2)} <span className="text-xl text-muted-foreground">{wallet.currency}</span>
                 </div>
                 <CardDescription className="text-xs mb-3">User's realized profit or loss. Adjusted by admin for specific cases like bonuses or corrections.</CardDescription>
-                <Button onClick={openAdjustPandLDialog} variant="outline" size="sm" disabled={isProcessing}>
-                  <Edit3 className="mr-2 h-4 w-4" /> Adjust P&L Balance
-                </Button>
               </CardContent>
             </Card>
              <p className="text-xs text-muted-foreground pt-2 text-center">
-                Wallet Last Updated: {formattedWalletUpdatedAt || 'Loading...'}
+                Wallet Last Updated: {typeof window !== 'undefined' ? formattedWalletUpdatedAt : 'Loading...'}
             </p>
           </div>
         </TabsContent>
@@ -378,7 +385,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
             <AlertDialogTitle>Adjust User Main Account Balance</AlertDialogTitle>
             <AlertDialogDescription>
               Current Main Balance: <span className="font-semibold">{wallet.balance.toFixed(2)} {wallet.currency}</span>.
-              Enter details of the user's external deposit/withdrawal. The system will convert to {wallet.currency} and update the balance.
+              Enter details of the user's external deposit or withdrawal. The system will convert the asset amount to {wallet.currency} and update the balance.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Form {...mainBalanceForm}>
@@ -412,9 +419,9 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                   <FormItem>
                     <FormLabel>Amount of External Asset Transacted</FormLabel>
                     <FormControl>
-                      <Input type="number" step="any" placeholder="e.g., 0.5 or 1000" {...field} />
+                      <Input type="number" step="any" placeholder="e.g., 0.5 (deposit) or -0.1 (withdrawal)" {...field} />
                     </FormControl>
-                     <FormDescription>Enter the amount of the asset (e.g., 0.5 for BTC, 1000 for USD). Use positive for deposits, negative for withdrawals if adjusting based on an external withdrawal event.</FormDescription>
+                     <FormDescription>Enter a positive amount for deposits (credits user balance) or a negative amount for withdrawals (debits user balance).</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -434,7 +441,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
               />
               <AlertDialogFooter className="pt-4">
                 <AlertDialogCancel onClick={() => { setIsAdjustBalanceDialogOpen(false); mainBalanceForm.reset(); }}>Cancel</AlertDialogCancel>
-                <Button type="submit" disabled={isProcessing}>
+                <Button type="submit" disabled={isProcessing || mainBalanceForm.formState.isSubmitting}>
                   {isProcessing ? 'Processing...' : 'Proceed to PIN'}
                 </Button>
               </AlertDialogFooter>
@@ -483,7 +490,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
               />
               <AlertDialogFooter className="pt-4">
                 <AlertDialogCancel onClick={() => { setIsAdjustPandLDialogOpen(false); pandlForm.reset(); }}>Cancel</AlertDialogCancel>
-                <Button type="submit" disabled={isProcessing}>
+                <Button type="submit" disabled={isProcessing || pandlForm.formState.isSubmitting}>
                   {isProcessing ? 'Processing...' : 'Proceed to PIN'}
                 </Button>
               </AlertDialogFooter>

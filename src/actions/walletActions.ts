@@ -36,14 +36,14 @@ async function findWalletByUserId(userId: string): Promise<Wallet | null> {
 const AdjustBalanceServerSchema = z.object({
   userId: z.string().uuid(),
   originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), "Invalid original asset code"),
-  originalAssetAmount: z.coerce.number().positive("Original asset amount must be positive."),
+  originalAssetAmount: z.coerce.number().refine(val => val !== 0, "Original asset amount cannot be zero. Use positive for deposits, negative for withdrawals."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
-  adminId: z.string().optional().default("SYSTEM_ADMIN"), // Will be updated if admin is logged in
+  adminId: z.string().optional().default("SYSTEM_ADMIN"),
 });
 
 export async function adjustUserWalletBalance(
   data: z.infer<typeof AdjustBalanceServerSchema>,
-  adminUserIdentifier?: string // Pass admin's email or UID from auth context
+  adminUserIdentifier?: string
 ): Promise<{ success: boolean; message: string; wallet?: Wallet }> {
   const validatedFields = AdjustBalanceServerSchema.safeParse(data);
   if (!validatedFields.success) {
@@ -54,7 +54,6 @@ export async function adjustUserWalletBalance(
 
   const { userId, originalAssetCode, originalAssetAmount, adminNotes } = validatedFields.data;
   const adminProcessedBy = adminUserIdentifier || validatedFields.data.adminId;
-
 
   const user = await findUserById(userId);
   if (!user) {
@@ -79,18 +78,21 @@ export async function adjustUserWalletBalance(
 
     let adjustmentAmountForWallet: number;
     try {
-      const exchangeRate = await getExchangeRate(originalAssetCode);
-      adjustmentAmountForWallet = originalAssetAmount * exchangeRate;
+      // This section handles fetching the exchange rate and calculating the USDT equivalent
+      const fetchedRateToUSDT = await getExchangeRate(originalAssetCode); // Renamed variable
+      adjustmentAmountForWallet = originalAssetAmount * fetchedRateToUSDT;
     } catch (error) {
       await client.query('ROLLBACK');
-      return { success: false, message: (error as Error).message || "Could not fetch exchange rate." };
+      console.error("Error fetching exchange rate or calculating adjustment:", error);
+      return { success: false, message: (error as Error).message || "Could not process balance adjustment due to an issue with exchange rates." };
     }
 
     const newBalance = oldBalance + adjustmentAmountForWallet;
+    const transactionType: 'DEPOSIT' | 'WITHDRAWAL' = adjustmentAmountForWallet >= 0 ? 'DEPOSIT' : 'WITHDRAWAL';
 
-    if (newBalance < 0 && adjustmentAmountForWallet < 0) {
+    if (newBalance < 0 && transactionType === 'WITHDRAWAL') {
        await client.query('ROLLBACK');
-       return { success: false, message: "Adjustment would result in a negative main balance. Operation cancelled." };
+       return { success: false, message: "Withdrawal would result in a negative main balance. Operation cancelled." };
     }
 
     const updateWalletRes = await client.query(
@@ -104,13 +106,13 @@ export async function adjustUserWalletBalance(
       username: user.username,
       user_email: user.email,
       wallet_id: finalUpdatedWalletData.id,
-      transaction_type: 'ADJUSTMENT' as const,
+      transaction_type: transactionType,
       asset_code: originalAssetCode,
       amount_asset: originalAssetAmount,
       amount_usd_equivalent: adjustmentAmountForWallet,
       balance_after_transaction: parseFloat(finalUpdatedWalletData.balance),
       status: 'COMPLETED' as const,
-      notes: `Main Balance Adjustment: ${adminNotes}`,
+      notes: `Main Balance ${transactionType === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'} Processed: ${adminNotes}`,
       admin_processed_by: adminProcessedBy,
       processed_at: new Date().toISOString(),
       trading_plan_id: user.trading_plan_id,
@@ -132,7 +134,7 @@ export async function adjustUserWalletBalance(
 
     await client.query('COMMIT');
 
-    console.log(`Admin action by ${adminProcessedBy}: Adjusted MAIN balance for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old Balance: ${oldBalance.toFixed(2)} ${finalUpdatedWalletData.currency}, New Balance: ${newBalance.toFixed(2)} ${finalUpdatedWalletData.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
+    console.log(`Admin action by ${adminProcessedBy}: Processed ${transactionType} for user ${userId}. Wallet ${finalUpdatedWalletData.id}. Old Balance: ${oldBalance.toFixed(2)} ${finalUpdatedWalletData.currency}, New Balance: ${newBalance.toFixed(2)} ${finalUpdatedWalletData.currency}. Original tx: ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : 8)} ${originalAssetCode} (Value: ${adjustmentAmountForWallet.toFixed(2)} USDT). Final Main Balance: ${parseFloat(finalUpdatedWalletData.balance).toFixed(2)} USDT. Reason: ${adminNotes}. Plan: ${currentTradingPlan?.name}`);
 
     const finalWalletTyped: Wallet = {
       id: finalUpdatedWalletData.id,
@@ -146,20 +148,23 @@ export async function adjustUserWalletBalance(
     };
 
     if (user.email) {
-        const emailSubject = "Your FPX Markets Account Balance Has Been Updated";
+        const emailSubject = transactionType === 'DEPOSIT'
+          ? "Your FPX Markets Deposit Has Been Processed"
+          : "Your FPX Markets Withdrawal Has Been Processed";
         const emailBody = `
 <p>Dear ${user.username || 'Valued User'},</p>
-<p>An administrator has updated your main account balance on FPX Markets.</p>
+<p>An administrator has processed a ${transactionType.toLowerCase()} for your main account balance on FPX Markets.</p>
 <p><strong>Transaction Details:</strong></p>
 <ul>
+    <li><strong>Type:</strong> Admin Processed ${transactionType.charAt(0) + transactionType.slice(1).toLowerCase()}</li>
     <li><strong>Original Transaction Asset:</strong> ${originalAssetCode}</li>
-    <li><strong>Original Transaction Amount:</strong> ${originalAssetAmount.toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : (originalAssetCode === 'BTC' || originalAssetCode === 'ETH' ? 8 : 6) )} ${originalAssetCode}</li>
+    <li><strong>Original Transaction Amount:</strong> ${Math.abs(originalAssetAmount).toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : (originalAssetCode === 'BTC' || originalAssetCode === 'ETH' ? 8 : 6) )} ${originalAssetCode}</li>
     <li><strong>Equivalent Change to Your Account Balance:</strong> ${adjustmentAmountForWallet > 0 ? '+' : ''}${adjustmentAmountForWallet.toFixed(2)} ${finalWalletTyped.currency}</li>
     <li><strong>New Account Balance:</strong> ${newBalance.toFixed(2)} ${finalWalletTyped.currency}</li>
 </ul>
 <p><strong>Reason/Notes from Admin:</strong></p>
 <p>${adminNotes}</p>
-<p>If you have any questions or believe this adjustment was made in error, please contact our support team immediately.</p>
+<p>If you have any questions or believe this transaction was made in error, please contact our support team immediately.</p>
 <p>Thank you,<br>The FPX Markets Team</p>
 `;
       await sendEmail({
@@ -172,12 +177,16 @@ export async function adjustUserWalletBalance(
     revalidatePath(`/users/${userId}`);
     revalidatePath(`/transactions`);
 
-    return { success: true, message: 'User main wallet balance updated successfully and adjustment logged.', wallet: finalWalletTyped };
+    return { success: true, message: `User main wallet balance updated successfully. ${transactionType} logged.`, wallet: finalWalletTyped };
 
-  } catch (error) {
+  } catch (error: any) {
     await client.query('ROLLBACK');
     console.error('Error adjusting user wallet balance:', error);
-    return { success: false, message: 'Database error occurred during balance adjustment.' };
+    if (error.code === '23503') { // Foreign key violation
+        console.error("Foreign key violation details:", error.detail, error.constraint);
+        return { success: false, message: `Database error: A related record was not found. Please check if user and wallet exist. Details: ${error.detail}` };
+    }
+    return { success: false, message: 'Database error occurred during balance adjustment. Details: ' + error.message };
   } finally {
     client.release();
   }
@@ -187,12 +196,12 @@ const AdjustPandLServerSchema = z.object({
   userId: z.string().uuid(),
   adjustmentAmount: z.coerce.number().refine(val => val !== 0, "Adjustment amount cannot be zero."),
   adminNotes: z.string().min(5, "Admin notes must be at least 5 characters long."),
-  adminId: z.string().optional().default("SYSTEM_ADMIN"), // Will be updated if admin is logged in
+  adminId: z.string().optional().default("SYSTEM_ADMIN"),
 });
 
 export async function adjustUserProfitLossBalance(
   data: z.infer<typeof AdjustPandLServerSchema>,
-  adminUserIdentifier?: string // Pass admin's email or UID from auth context
+  adminUserIdentifier?: string
 ): Promise<{ success: boolean; message: string; wallet?: Wallet }> {
   const validatedFields = AdjustPandLServerSchema.safeParse(data);
   if (!validatedFields.success) {
@@ -203,7 +212,6 @@ export async function adjustUserProfitLossBalance(
 
   const { userId, adjustmentAmount, adminNotes } = validatedFields.data;
   const adminProcessedBy = adminUserIdentifier || validatedFields.data.adminId;
-
 
   const user = await findUserById(userId);
   if (!user) {
@@ -306,10 +314,14 @@ export async function adjustUserProfitLossBalance(
     revalidatePath(`/transactions`);
 
     return { success: true, message: 'User P&L balance updated successfully and adjustment logged.', wallet: finalWalletTyped };
-  } catch (error) {
+  } catch (error: any) {
     await client.query('ROLLBACK');
     console.error('Error adjusting P&L balance:', error);
-    return { success: false, message: 'Database error occurred during P&L adjustment.' };
+     if (error.code === '23503') { // Foreign key violation
+        console.error("Foreign key violation details:", error.detail, error.constraint);
+        return { success: false, message: `Database error: A related record was not found. Please check if user and wallet exist. Details: ${error.detail}` };
+    }
+    return { success: false, message: 'Database error occurred during P&L adjustment. Details: ' + error.message };
   } finally {
     client.release();
   }
@@ -395,3 +407,4 @@ export async function getTransactionsLog(filters?: {
 export async function getWalletByUserId(userId: string): Promise<Wallet | null> {
   return findWalletByUserId(userId);
 }
+
