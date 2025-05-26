@@ -2,10 +2,9 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
+// import { getAnalytics } from "firebase/analytics"; // Optional: Only if you need Firebase Analytics
 
 // Log to help debug if environment variables are loaded
-// This will show in your server console when Next.js builds/runs this file,
-// and in the browser console because it's a client-side accessible env var.
 console.log("Attempting to use Firebase API Key from env:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
 
 const firebaseConfig = {
@@ -20,28 +19,43 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let auth: Auth;
+// let analytics; // Optional
 
-// Check if all required config values are present
+// Check if all required config values are present for core functionality
 if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
   console.error(
     "Firebase configuration is missing or incomplete. " +
     "Please ensure NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, " +
     "and NEXT_PUBLIC_FIREBASE_PROJECT_ID are set correctly in your .env.local file, " +
-    "and that you have restarted your development server."
+    "and that you have restarted your development server. Application might not work correctly."
   );
-  // Depending on the severity, you might throw an error here to stop initialization
-  // if (!firebaseConfig.apiKey) throw new Error("Firebase API Key is missing!");
+  // You might throw an error here to stop initialization if critical values are missing,
+  // or allow it to proceed and let Firebase SDK handle the error.
+  // if (!firebaseConfig.apiKey) throw new Error("Firebase API Key is missing! Cannot initialize Firebase.");
 }
 
 
 if (!getApps().length) {
-  // Ensure apiKey is a string, even if it's undefined, initializeApp will handle it and error out if invalid.
-  // This check above is more for developer guidance.
-  app = initializeApp(firebaseConfig as any); // Cast as any to bypass strict type checks if some are undefined, Firebase handles it.
+  try {
+    app = initializeApp(firebaseConfig);
+    // analytics = getAnalytics(app); // Optional: Initialize Analytics if measurementId is present and needed
+  } catch (e) {
+    console.error("Error initializing Firebase App:", e);
+    // Depending on the error, you might want to throw it or handle it gracefully.
+    // For now, we'll let it proceed so auth initialization below might still show an error if config is bad.
+  }
 } else {
   app = getApp();
 }
 
-auth = getAuth(app);
+// Initialize Auth, even if app initialization had an issue, to get specific auth errors.
+try {
+  auth = getAuth(app!); // Use non-null assertion if app is guaranteed to be initialized or error thrown.
+} catch (e) {
+  console.error("Error getting Firebase Auth instance:", e);
+  // If auth can't be initialized, the app's auth features won't work.
+  // throw new Error("Could not initialize Firebase Authentication."); // Optionally rethrow
+}
 
-export { app, auth };
+
+export { app, auth }; // Export analytics if initialized and needed
