@@ -12,9 +12,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { updateUserTradingPlan, toggleUserActiveStatus } from '@/actions/userActions';
 import { adjustUserWalletBalance, adjustUserProfitLossBalance } from '@/actions/walletActions';
-import { verifyAdminPin } from '@/actions/adminActions'; // Import verifyAdminPin
+import { verifyAdminPin } from '@/actions/adminActions';
 import { useState, useTransition, useEffect } from 'react';
-import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building } from 'lucide-react';
+import { UserX, UserCheck, Edit3, WalletCards, ShieldCheck, TrendingUp, TrendingDown, KeyRound, Fingerprint, Building, Briefcase } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,6 +29,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { useAuth } from '@/contexts/AuthContext';
+import { Label } from '@/components/ui/label'; // Added import
 
 const AdjustBalanceFormSchema = z.object({
   originalAssetCode: z.custom<CurrencyCode>((val) => typeof val === 'string' && ['USD', 'BTC', 'ETH', 'USDT', 'SOL', 'TRX'].includes(val), {
@@ -146,6 +147,10 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
   };
 
   const onMainBalanceFormSubmit = (data: AdjustBalanceFormData) => {
+    if (!adminUser?.uid) {
+        toast({ title: "Authentication Error", description: "Admin user not found. Please re-login.", variant: "destructive"});
+        return;
+    }
     setMainBalanceDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('mainBalance');
     setIsAdjustBalanceDialogOpen(false);
@@ -155,6 +160,10 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
   };
 
   const onPandLFormSubmit = (data: AdjustPandLFormData) => {
+     if (!adminUser?.uid) {
+        toast({ title: "Authentication Error", description: "Admin user not found. Please re-login.", variant: "destructive"});
+        return;
+    }
     setPandlDataToSubmit({ userId: user.id, ...data });
     setPendingActionType('pandlBalance');
     setIsAdjustPandLDialogOpen(false);
@@ -177,12 +186,11 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
       const pinVerificationResult = await verifyAdminPin(adminUser.uid, enteredPin);
 
       if (!pinVerificationResult.success) {
-        setPinError(pinVerificationResult.message || "Invalid PIN or PIN not set up.");
-        setEnteredPin(''); // Clear PIN input on failure
+        setPinError(pinVerificationResult.message || "Invalid PIN. Please check your PIN on the Security page or set it up if you haven't.");
+        setEnteredPin(''); 
         return;
       }
 
-      // PIN is correct, proceed with action
       setPinError('');
       setIsPinDialogOpen(false);
       const adminIdentifier = adminUser?.email || adminUser?.uid;
@@ -261,8 +269,10 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                         <><span className="ml-1 text-green-600 font-medium">Completed</span> (<span className="text-muted-foreground text-xs">{new Date(user.pin_setup_completed_at).toLocaleDateString()}</span>)</> :
                         <span className="ml-1 text-orange-500 font-medium">Not Yet Setup</span>}
                 </div>
-
-                <div><strong>Current Trading Plan:</strong> <span className="text-muted-foreground">{tradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</span></div>
+                 <div className="flex items-center">
+                    <Briefcase className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <strong>Trading Plan:</strong> <span className="ml-1 text-muted-foreground">{tradingPlans.find(p => p.id === user.trading_plan_id)?.name || 'N/A'}</span>
+                </div>
                 <div><strong>Account Status:</strong> <span className={`font-semibold ${user.is_active ? 'text-green-600' : 'text-red-600'}`}>{user.is_active ? 'Active' : 'Blocked/Inactive'}</span></div>
               </div>
             </CardContent>
@@ -404,7 +414,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
                     <FormControl>
                       <Input type="number" step="any" placeholder="e.g., 0.5 or 1000" {...field} />
                     </FormControl>
-                     <FormDescription>Enter the amount of the asset (e.g., 0.5 for BTC, 1000 for USD).</FormDescription>
+                     <FormDescription>Enter the amount of the asset (e.g., 0.5 for BTC, 1000 for USD). Use positive for deposits, negative for withdrawals if adjusting based on an external withdrawal event.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -525,3 +535,5 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
     </>
   );
 }
+
+    
