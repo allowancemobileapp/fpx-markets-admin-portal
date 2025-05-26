@@ -1,24 +1,8 @@
-'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Skeleton } from '@/components/ui/skeleton';
-
-export default function AppRootPage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    // Redirect to dashboard, as the (app) group's root is not meant to be directly viewed.
-    router.replace('/dashboard');
-  }, [router]);
-
-  return (
-    <div className="flex h-screen items-center justify-center bg-background">
-      <div className="space-y-4 p-8 rounded-lg">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4" />
-        <p className="text-muted-foreground pt-2">Redirecting to dashboard...</p>
-      </div>
-    </div>
-  );
+// src/app/(app)/page.tsx
+// This file exists to satisfy the Next.js router for the root of the (app) group.
+// Actual navigation to dashboard or login is handled by higher-level components/redirects.
+export default function AppGroupRootPlaceholder() {
+  // This is a Server Component. Rendering null is the simplest way to provide a page
+  // for this segment without requiring a client reference manifest.
+  return null;
 }
