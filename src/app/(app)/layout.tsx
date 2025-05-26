@@ -13,7 +13,7 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isAdmin, loading } = useAuth();
+  const { user, isAdmin, loading } = useAuth(); // isAdmin will be true if user is logged in
   const router = useRouter();
   const pathname = usePathname();
 
@@ -22,21 +22,14 @@ export default function AppLayout({
       if (!user) {
         // Not logged in, redirect to login
         router.replace('/login');
-      } else if (!isAdmin) {
-        // Logged in but not an admin, redirect to login with an error or a specific "access denied" page
-        console.warn("Access denied: User is not an admin. Redirecting to login.");
-        // Potentially sign them out here or show an access denied message before redirecting
-        // auth.signOut(); // Optionally sign out
-        router.replace('/login?error=access_denied');
-      }
-      // If user is logged in and is admin, they can stay.
+      } 
+      // The 'else if (!isAdmin)' check is removed because if 'user' exists, 
+      // 'isAdmin' (for the context of this portal) is true.
+      // If there was a more granular admin role check, it would go here.
     }
   }, [user, isAdmin, loading, router, pathname]);
 
-  // While loading auth state, or if conditions for redirect are met but redirect hasn't happened yet
-  if (loading || !user || !isAdmin) {
-    // Avoid rendering the layout if we're about to redirect or still verifying
-    // Show a loading skeleton or similar placeholder
+  if (loading || !user) { // Simplified condition: show skeleton if loading or no user (implies redirecting)
      return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="space-y-4 p-8 rounded-lg">
@@ -50,7 +43,6 @@ export default function AppLayout({
     );
   }
 
-  // Only render the main app layout if the user is an authenticated admin
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />

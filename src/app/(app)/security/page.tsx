@@ -6,12 +6,12 @@ import { useState, useEffect, useTransition } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/components/shared/page-header';
 import { ShieldCheck, KeyRound, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { setAdminPin, getAdminPinStatus } from '@/actions/adminActions'; // Assuming verifyAdminPin might be used indirectly or for change
-import { Label } from '@/components/ui/label'; // Added Label import
+import { setAdminPin, getAdminPinStatus } from '@/actions/adminActions';
 
 // IMPORTANT SECURITY WARNING:
 // The PIN is currently stored and handled in PLAIN TEXT by the backend actions.
@@ -24,7 +24,7 @@ export default function SecurityPage() {
   const [isPending, startTransition] = useTransition();
 
   const [isPinSet, setIsPinSet] = useState<boolean | null>(null);
-  const [currentPin, setCurrentPin] = useState(''); // For changing PIN
+  const [currentPin, setCurrentPin] = useState(''); // For changing PIN (though not fully implemented for verification)
   const [newPin, setNewPin] = useState('');
   const [confirmNewPin, setConfirmNewPin] = useState('');
   const [error, setError] = useState('');
@@ -35,7 +35,7 @@ export default function SecurityPage() {
       startTransition(async () => {
         const status = await getAdminPinStatus(user.uid);
         if (status.error) {
-          toast({ title: 'Error', description: status.error, variant: 'destructive' });
+          toast({ title: 'Error Fetching PIN Status', description: status.error, variant: 'destructive' });
           setIsPinSet(false); // Default to false on error
         } else {
           setIsPinSet(status.isPinSet);
@@ -50,8 +50,12 @@ export default function SecurityPage() {
   };
 
   useEffect(() => {
-    fetchPinStatus();
-  }, [user?.uid]);
+    // Only fetch if user is available and status is not yet determined
+    if (user?.uid && isPinSet === null) {
+      fetchPinStatus();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, isPinSet]); // isPinSet added to re-evaluate if it becomes null
 
   const handleSetOrChangePin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -70,12 +74,6 @@ export default function SecurityPage() {
       return;
     }
 
-    // In 'change' mode, we would typically verify currentPin here.
-    // However, setAdminPin action just overwrites.
-    // For a true "change" requiring current PIN, a different action would be needed.
-    // For simplicity, 'change' and 'reset' will use the same setAdminPin for now.
-    // A more robust `changeAdminPin` action would verify current PIN before updating.
-
     startTransition(async () => {
       const result = await setAdminPin(user.uid, newPin);
       if (result.success) {
@@ -83,16 +81,23 @@ export default function SecurityPage() {
         setIsPinSet(true);
         setNewPin('');
         setConfirmNewPin('');
-        setCurrentPin(''); // Clear current PIN field as well
-        setMode('change'); // Switch to change mode after successful setup/reset
+        setCurrentPin('');
+        setMode('change');
       } else {
-        toast({ title: 'Error', description: result.message, variant: 'destructive' });
+        toast({ title: 'Error Setting PIN', description: result.message, variant: 'destructive' });
         setError(result.message);
       }
     });
   };
+  
+  if (isPinSet === null && !isPending && user?.uid) {
+      // If status is still null, not pending, and user is loaded, trigger fetch
+      // This can happen if the initial useEffect didn't run due to timing
+      fetchPinStatus();
+  }
 
-  if (isPinSet === null) {
+
+  if (isPinSet === null || (isPending && isPinSet === null)) {
     return (
       <div className="space-y-6">
         <PageHeader title="Admin Security" icon={ShieldCheck} description="Manage your Admin Portal PIN." />
@@ -112,7 +117,7 @@ export default function SecurityPage() {
             {isPinSet && mode === 'reset' && 'Reset Your Admin PIN'}
           </CardTitle>
           <CardDescription>
-            {isPinSet && mode !== 'reset' ? 'Enter your current PIN and a new 4-digit PIN.' : 'Create a 4-digit PIN for authorizing sensitive actions.'}
+            {isPinSet && mode !== 'reset' ? 'Enter a new 4-digit PIN. Your current PIN is not required to change it in this version.' : 'Create a 4-digit PIN for authorizing sensitive actions.'}
             {isPinSet && mode === 'reset' && 'Enter a new 4-digit PIN. Your Firebase authentication serves as verification for reset.'}
           </CardDescription>
         </CardHeader>
@@ -120,7 +125,7 @@ export default function SecurityPage() {
           <form onSubmit={handleSetOrChangePin} className="space-y-4">
             {isPinSet && mode === 'change' && (
               <div>
-                <Label htmlFor="currentPin">Current PIN (Not Implemented for Change Yet)</Label>
+                <Label htmlFor="currentPin">Current PIN (Not Required for Change)</Label>
                 <Input
                   id="currentPin"
                   type="password"
@@ -128,11 +133,11 @@ export default function SecurityPage() {
                   maxLength={4}
                   value={currentPin}
                   onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Enter current 4-digit PIN"
+                  placeholder="Current PIN (optional)"
                   className="text-center tracking-[0.3em]"
-                  disabled // Temporarily disable as setAdminPin doesn't verify current PIN
+                  disabled // True PIN change not implemented, setAdminPin just overwrites
                 />
-                <p className="text-xs text-muted-foreground mt-1">Note: True PIN change (verifying current PIN) requires backend update. This form currently resets.</p>
+                <p className="text-xs text-muted-foreground mt-1">Note: True PIN change (verifying current PIN before update) is not implemented. This form currently resets/overwrites the PIN.</p>
               </div>
             )}
 

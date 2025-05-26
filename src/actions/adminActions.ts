@@ -28,15 +28,19 @@ export async function setAdminPin(firebaseAuthUid: string, pin: string): Promise
     // Check if the user (admin) exists in your 'users' table
     const userCheck = await query('SELECT id FROM users WHERE firebase_auth_uid = $1', [firebaseAuthUid]);
     if (userCheck.rows.length === 0) {
-      return { success: false, message: 'Admin user profile not found in the database. Cannot set PIN.' };
+      // This implies that an admin using the portal might not have a corresponding record in the 'users' table.
+      // For PIN storage, it's essential they do.
+      // Consider creating a user record if one doesn't exist for the admin UID,
+      // or ensure admins are always added to the 'users' table.
+      // For now, we'll return an error if no corresponding user record is found.
+      console.warn(`Attempt to set PIN for Firebase UID ${firebaseAuthUid} which has no corresponding 'users' table entry.`);
+      return { success: false, message: 'Admin user profile not found in the database. Cannot set PIN. Please ensure this admin is also in the users table.' };
     }
-    // const userId = userCheck.rows[0].id; // Not strictly needed if updating by firebase_auth_uid
 
     // Store the PIN (plain text - NOT SECURE FOR PRODUCTION)
     await query('UPDATE users SET admin_pin = $1, updated_at = NOW() WHERE firebase_auth_uid = $2', [pin, firebaseAuthUid]);
     console.log(`Admin action: PIN set/updated for admin UID ${firebaseAuthUid}.`);
-    // Revalidate security page or any page displaying PIN status
-    revalidatePath('/security');
+    revalidatePath('/security'); // Revalidate the security page
     return { success: true, message: 'Admin PIN has been set successfully.' };
   } catch (error: any) {
     console.error('Error setting admin PIN:', error);
@@ -60,11 +64,11 @@ export async function verifyAdminPin(firebaseAuthUid: string, pinToVerify: strin
   try {
     const result = await query('SELECT admin_pin FROM users WHERE firebase_auth_uid = $1', [firebaseAuthUid]);
     if (result.rows.length === 0) {
-      return { success: false, message: 'Admin user not found or PIN not set up.' };
+      return { success: false, message: 'Admin user profile not found in database or PIN not set up.' };
     }
     const storedPin = result.rows[0].admin_pin;
     if (storedPin === null) {
-      return { success: false, message: 'Admin PIN is not yet set up.' };
+      return { success: false, message: 'Admin PIN is not yet set up. Please set it on the Security page.' };
     }
     if (storedPin === pinToVerify) {
       return { success: true };

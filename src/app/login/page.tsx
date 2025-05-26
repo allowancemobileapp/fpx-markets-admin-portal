@@ -9,7 +9,6 @@ import { auth } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { LogIn } from 'lucide-react'; // Can keep for Google icon or use a Google icon
 import Link from 'next/link';
 
 // Google Icon SVG as a component
@@ -48,17 +47,12 @@ export default function LoginPage() {
     const provider = new GoogleAuthProvider();
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const userCredential = await signInWithPopup(auth, provider);
-      const idTokenResult = await userCredential.user.getIdTokenResult();
-
-      if (idTokenResult.claims.admin === true) {
-        toast({ title: 'Login Successful', description: 'Welcome back, Admin!' });
-        router.replace('/dashboard'); // Redirect to dashboard after successful admin login
-      } else {
-        setError('Access denied. You do not have admin privileges with this Google account.');
-        await auth.signOut(); // Sign out non-admin users
-        toast({ title: 'Access Denied', description: 'You do not have admin privileges.', variant: 'destructive' });
-      }
+      // No admin claim check needed here as per user request
+      // Any successful Google Sign-in is sufficient for this portal
+      toast({ title: 'Login Successful', description: 'Welcome to the Admin Portal!' });
+      router.replace('/dashboard'); // Redirect to dashboard after successful login
     } catch (err: any) {
       console.error("Firebase Google Auth Error:", err);
       let errorMessage = "Failed to sign in with Google. Please try again.";
