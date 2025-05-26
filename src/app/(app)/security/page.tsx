@@ -90,12 +90,7 @@ export default function SecurityPage() {
     });
   };
   
-  if (isPinSet === null && !isPending && user?.uid) {
-      // If status is still null, not pending, and user is loaded, trigger fetch
-      // This can happen if the initial useEffect didn't run due to timing
-      fetchPinStatus();
-  }
-
+  // Removed problematic direct call to fetchPinStatus from render body
 
   if (isPinSet === null || (isPending && isPinSet === null)) {
     return (
