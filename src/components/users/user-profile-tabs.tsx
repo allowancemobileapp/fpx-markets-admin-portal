@@ -107,7 +107,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
         setFormattedWalletUpdatedAt("Invalid Date");
       }
     } else if (!wallet?.updated_at) {
-        setFormattedWalletUpdatedAt("N/A");
+        setFormattedWalletUpdatedAt("Loading...");
     }
   }, [wallet?.updated_at]);
 
@@ -178,7 +178,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
 
       if (!pinVerificationResult.success) {
         setPinError(pinVerificationResult.message || "Invalid PIN or PIN not set up.");
-        setEnteredPin('');
+        setEnteredPin(''); // Clear PIN input on failure
         return;
       }
 
@@ -338,7 +338,7 @@ export function UserProfileTabs({ user: initialUser, wallet: initialWallet, trad
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <FormLabel htmlFor="tradingPlanSelect">New Trading Plan</FormLabel>
+                  <Label htmlFor="tradingPlanSelect">New Trading Plan</Label>
                   <Select value={selectedTradingPlanId.toString()} onValueChange={(value) => setSelectedTradingPlanId(Number(value))}>
                       <SelectTrigger id="tradingPlanSelect">
                           <SelectValue placeholder="Select new trading plan" />
