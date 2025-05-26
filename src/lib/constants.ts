@@ -38,4 +38,3 @@ export const NAV_ITEMS: NavItem[] = [
     description: 'Manage your Admin PIN.',
   },
 ];
-
