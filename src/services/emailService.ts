@@ -11,7 +11,8 @@ interface EmailOptions {
 }
 
 let resend: Resend | null = null;
-const RESEND_FROM_EMAIL = 'fpxmarkets@gmail.com'; // Your specified "from" email
+// Use Resend's default onboarding address with a custom sender name
+const RESEND_FROM_EMAIL = 'FPX Markets Admin <onboarding@resend.dev>'; 
 
 function getResendClient(): Resend {
   if (!resend) {
@@ -53,23 +54,29 @@ export async function sendEmail(options: EmailOptions): Promise<{ success: boole
   
   try {
     const client = getResendClient();
-    const data = await client.emails.send({
+    const { data, error } = await client.emails.send({ // Destructure data and error
       from: RESEND_FROM_EMAIL,
       to: options.to,
       subject: options.subject,
       html: options.body, // Resend expects HTML content in the 'html' field
     });
 
-    if (data.error) {
-      console.error('Resend API Error:', data.error);
-      return { success: false, error: data.error.message || 'Failed to send email via Resend.' };
+    if (error) { // Check the destructured error object
+      console.error('Resend API Error:', error);
+      return { success: false, error: error.message || 'Failed to send email via Resend.' };
     }
 
-    console.log(`Email sent successfully to ${options.to} via Resend. Message ID: ${data.data?.id}`);
-    return { success: true, messageId: data.data?.id };
+    console.log(`Email sent successfully to ${options.to} via Resend. Message ID: ${data?.id}`);
+    return { success: true, messageId: data?.id };
 
   } catch (error: any) {
     console.error('Error sending email via Resend:', error);
-    return { success: false, error: error.message || 'An unexpected error occurred while sending email.' };
+    // Check if the error object has more details, e.g. error.response.data
+    const errorMessage = error.message || 'An unexpected error occurred while sending email.';
+    if (error.response && error.response.data && error.response.data.message) {
+        console.error('Resend API detailed error:', error.response.data.message);
+    }
+    return { success: false, error: errorMessage };
   }
 }
+
