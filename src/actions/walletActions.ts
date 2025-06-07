@@ -78,8 +78,7 @@ export async function adjustUserWalletBalance(
 
     let adjustmentAmountForWallet: number;
     try {
-      // This section handles fetching the exchange rate and calculating the USDT equivalent
-      const fetchedRateToUSDT = await getExchangeRate(originalAssetCode); // Renamed variable
+      const fetchedRateToUSDT = await getExchangeRate(originalAssetCode);
       adjustmentAmountForWallet = originalAssetAmount * fetchedRateToUSDT;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -149,21 +148,21 @@ export async function adjustUserWalletBalance(
 
     if (user.email) {
         const emailSubject = transactionType === 'DEPOSIT'
-          ? "Your FPX Markets Deposit Has Been Processed"
-          : "Your FPX Markets Withdrawal Has Been Processed";
+          ? "Your FPX Markets Account Balance Has Been Credited"
+          : "Your FPX Markets Account Balance Has Been Debited";
         const emailBody = `
 <p>Dear ${user.username || 'Valued User'},</p>
-<p>An administrator has processed a ${transactionType.toLowerCase()} for your main account balance on FPX Markets.</p>
+<p>An administrator has processed a ${transactionType.toLowerCase()} transaction for your main account balance on FPX Markets.</p>
 <p><strong>Transaction Details:</strong></p>
-<ul>
-    <li><strong>Type:</strong> Admin Processed ${transactionType.charAt(0) + transactionType.slice(1).toLowerCase()}</li>
-    <li><strong>Original Transaction Asset:</strong> ${originalAssetCode}</li>
-    <li><strong>Original Transaction Amount:</strong> ${Math.abs(originalAssetAmount).toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : (originalAssetCode === 'BTC' || originalAssetCode === 'ETH' ? 8 : 6) )} ${originalAssetCode}</li>
+<ul style="list-style-type: disc; margin-left: 20px;">
+    <li><strong>Transaction Type:</strong> Admin Processed ${transactionType === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'}</li>
+    <li><strong>Original Asset of Transaction:</strong> ${originalAssetCode}</li>
+    <li><strong>Original Amount Transacted:</strong> ${Math.abs(originalAssetAmount).toFixed(originalAssetCode === 'USD' || originalAssetCode === 'USDT' ? 2 : (originalAssetCode === 'BTC' || originalAssetCode === 'ETH' ? 8 : 6) )} ${originalAssetCode}</li>
     <li><strong>Equivalent Change to Your Account Balance:</strong> ${adjustmentAmountForWallet > 0 ? '+' : ''}${adjustmentAmountForWallet.toFixed(2)} ${finalWalletTyped.currency}</li>
     <li><strong>New Account Balance:</strong> ${newBalance.toFixed(2)} ${finalWalletTyped.currency}</li>
 </ul>
 <p><strong>Reason/Notes from Admin:</strong></p>
-<p>${adminNotes}</p>
+<p style="padding: 10px; border-left: 3px solid #eee; margin-left: 5px;"><em>${adminNotes}</em></p>
 <p>If you have any questions or believe this transaction was made in error, please contact our support team immediately.</p>
 <p>Thank you,<br>The FPX Markets Team</p>
 `;
@@ -250,7 +249,7 @@ export async function adjustUserProfitLossBalance(
       asset_code: 'USDT' as CurrencyCode,
       amount_asset: adjustmentAmount,
       amount_usd_equivalent: adjustmentAmount,
-      balance_after_transaction: parseFloat(finalUpdatedWalletData.balance),
+      balance_after_transaction: parseFloat(finalUpdatedWalletData.balance), // Main balance after this P&L op
       status: 'COMPLETED' as const,
       notes: `P&L Adjustment: ${adminNotes}`,
       admin_processed_by: adminProcessedBy,
@@ -288,17 +287,17 @@ export async function adjustUserProfitLossBalance(
     };
 
     if (user.email) {
-        const emailSubject = "Your FPX Markets P&L Balance Has Been Updated";
+        const emailSubject = "Your FPX Markets Profit & Loss (P&L) Balance Has Been Updated";
         const emailBody = `
 <p>Dear ${user.username || 'Valued User'},</p>
 <p>An administrator has updated your Profit & Loss (P&L) balance on FPX Markets.</p>
 <p><strong>Adjustment Details:</strong></p>
-<ul>
+<ul style="list-style-type: disc; margin-left: 20px;">
     <li><strong>Adjustment Amount:</strong> ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount.toFixed(2)} ${finalWalletTyped.currency}</li>
     <li><strong>New P&L Balance:</strong> ${newPandLBalance.toFixed(2)} ${finalWalletTyped.currency}</li>
 </ul>
 <p><strong>Reason/Notes from Admin:</strong></p>
-<p>${adminNotes}</p>
+<p style="padding: 10px; border-left: 3px solid #eee; margin-left: 5px;"><em>${adminNotes}</em></p>
 <p>This P&L adjustment may also affect your total account equity.</p>
 <p>If you have any questions or believe this adjustment was made in error, please contact our support team immediately.</p>
 <p>Thank you,<br>The FPX Markets Team</p>
@@ -407,4 +406,3 @@ export async function getTransactionsLog(filters?: {
 export async function getWalletByUserId(userId: string): Promise<Wallet | null> {
   return findWalletByUserId(userId);
 }
-
